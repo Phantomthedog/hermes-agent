@@ -1200,6 +1200,26 @@ def list_authenticated_providers(
             live = [current_model]
         curated["lmstudio"] = live
 
+    # Apply per-provider model_catalog overrides.
+    # If ``model_catalog.providers.<name>`` is configured (either as a
+    # remote/local manifest URL or an inline model-ID list), its model
+    # list replaces the hardcoded ``_PROVIDER_MODELS`` entry for that
+    # provider.  This lets curated third-party model lists (e.g. the
+    # router's generated ``hermes-opencode-zen-catalog.json``) surface
+    # in ``/model`` without requiring a Hermes source patch.
+    # Providers with a catalog override also skip the ``_MODELS_DEV_PREFERRED``
+    # merge below — the override is authoritative.
+    _catalog_overridden_providers: set[str] = set()
+    try:
+        from hermes_cli.model_catalog import get_curated_provider_models
+        for pid in list(curated.keys()):
+            override = get_curated_provider_models(pid)
+            if override is not None:
+                curated[pid] = override
+                _catalog_overridden_providers.add(pid)
+    except Exception:
+        pass
+
     # --- 1. Check Hermes-mapped providers ---
     for hermes_id, mdev_id in PROVIDER_TO_MODELS_DEV.items():
         # Skip aliases that map to the same models.dev provider (e.g.
@@ -1243,8 +1263,10 @@ def list_authenticated_providers(
         # For preferred providers, merge models.dev entries into the curated
         # catalog so newly released models (e.g. mimo-v2.5-pro on opencode-go)
         # show up in the picker without requiring a Hermes release.
+        # Providers with a ``model_catalog.providers.<name>`` override skip
+        # this merge — the override is authoritative.
         model_ids = curated.get(hermes_id, [])
-        if hermes_id in _MODELS_DEV_PREFERRED:
+        if hermes_id in _MODELS_DEV_PREFERRED and hermes_id not in _catalog_overridden_providers:
             model_ids = _merge_with_models_dev(hermes_id, model_ids)
         total = len(model_ids)
         top = model_ids[:max_models]
@@ -1368,7 +1390,8 @@ def list_authenticated_providers(
             # Use curated list — look up by Hermes slug, fall back to overlay key
             model_ids = curated.get(hermes_slug, []) or curated.get(pid, [])
             # Merge with models.dev for preferred providers (same rationale as above).
-            if hermes_slug in _MODELS_DEV_PREFERRED:
+            # Providers with a model_catalog override skip this merge.
+            if hermes_slug in _MODELS_DEV_PREFERRED and hermes_slug not in _catalog_overridden_providers:
                 model_ids = _merge_with_models_dev(hermes_slug, model_ids)
         total = len(model_ids)
         top = model_ids[:max_models]

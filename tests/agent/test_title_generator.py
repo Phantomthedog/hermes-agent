@@ -77,7 +77,7 @@ class TestGenerateTitle:
 
         assert result is None
         assert len(captured) == 1
-        assert captured[0][0] == "title generation"
+        assert captured[0][0] == "title generation (retry)"
         assert captured[0][1] is exc
 
     def test_failure_callback_errors_are_swallowed(self):

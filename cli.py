@@ -167,6 +167,7 @@ from hermes_cli.browser_connect import (
 )
 from hermes_cli.env_loader import load_hermes_dotenv
 from utils import base_url_host_matches, is_truthy_value
+from agent import terminal_status as _terminal_status
 
 _hermes_home = get_hermes_home()
 _project_env = Path(__file__).parent / '.env'
@@ -3418,6 +3419,7 @@ class HermesCLI:
             "session_api_calls": 0,
             "compressions": 0,
             "active_background_tasks": 0,
+            "session_title": None,
         }
 
         # Count live /background tasks. The dict entry is removed in the
@@ -3441,6 +3443,15 @@ class HermesCLI:
         snapshot["session_completion_tokens"] = getattr(agent, "session_completion_tokens", 0) or 0
         snapshot["session_total_tokens"] = getattr(agent, "session_total_tokens", 0) or 0
         snapshot["session_api_calls"] = getattr(agent, "session_api_calls", 0) or 0
+
+        # Fetch session title from DB (may be set by auto_title_session after first exchange)
+        if self._session_db and self.session_id:
+            try:
+                title_val = self._session_db.get_session_title(self.session_id)
+                if title_val:
+                    snapshot["session_title"] = title_val
+            except Exception:
+                pass
 
         compressor = getattr(agent, "context_compressor", None)
         if compressor:
@@ -3647,6 +3658,8 @@ class HermesCLI:
     def _build_status_bar_text(self, width: Optional[int] = None) -> str:
         """Return a compact one-line session status string for the TUI footer."""
         try:
+            from tools.approval import _get_approval_mode
+
             snapshot = self._get_status_bar_snapshot()
             if width is None:
                 width = self._get_tui_terminal_width()
@@ -3654,14 +3667,32 @@ class HermesCLI:
             percent_label = f"{percent}%" if percent is not None else "--"
             duration_label = snapshot["duration"]
 
-            yolo_active = bool(os.getenv("HERMES_YOLO_MODE"))
+            yolo_active = bool(os.getenv("HERMES_YOLO_MODE")) or _get_approval_mode() == "off"
+
+            # Session title (may be None) — truncate to keep footer compact
+            raw_title = snapshot.get("session_title") or ""
+            title_label = ""
+            if raw_title:
+                _t = raw_title.strip()
+                if len(_t) > 36:
+                    _t = _t[:33] + "..."
+                if _t:
+                    title_label = _t
+
             if width < 52:
-                text = f"⚕ {snapshot['model_short']} · {duration_label}"
-                if yolo_active:
-                    text += " · ⚠ YOLO"
+                yolo_prefix = "⚠ YOLO · " if yolo_active else ""
+                text = f"⚕ {yolo_prefix}{snapshot['model_short']} · {duration_label}"
                 return self._trim_status_bar_text(text, width)
             if width < 76:
-                parts = [f"⚕ {snapshot['model_short']}", percent_label]
+                parts = []
+                if title_label:
+                    parts.append(f"⚕ {title_label}")
+                    parts.append(snapshot['model_short'])
+                else:
+                    parts.append(f"⚕ {snapshot['model_short']}")
+                if yolo_active:
+                    parts.append("⚠ YOLO")
+                parts.append(percent_label)
                 compressions = snapshot.get("compressions", 0)
                 if compressions:
                     parts.append(f"🗜️ {compressions}")
@@ -3669,8 +3700,6 @@ class HermesCLI:
                 if bg_count:
                     parts.append(f"▶ {bg_count}")
                 parts.append(duration_label)
-                if yolo_active:
-                    parts.append("⚠ YOLO")
                 return self._trim_status_bar_text(" · ".join(parts), width)
 
             if snapshot["context_length"]:
@@ -3681,7 +3710,16 @@ class HermesCLI:
                 context_label = "ctx --"
 
             compressions = snapshot.get("compressions", 0)
-            parts = [f"⚕ {snapshot['model_short']}", context_label, percent_label]
+            parts = []
+            if title_label:
+                parts.append(f"⚕ {title_label}")
+                parts.append(snapshot['model_short'])
+            else:
+                parts.append(f"⚕ {snapshot['model_short']}")
+            if yolo_active:
+                parts.append("⚠ YOLO")
+            parts.append(context_label)
+            parts.append(percent_label)
             if compressions:
                 parts.append(f"🗜️ {compressions}")
             bg_count = snapshot.get("active_background_tasks", 0)
@@ -3691,8 +3729,6 @@ class HermesCLI:
             prompt_elapsed = snapshot.get("prompt_elapsed")
             if prompt_elapsed:
                 parts.append(prompt_elapsed)
-            if yolo_active:
-                parts.append("⚠ YOLO")
             return self._trim_status_bar_text(" │ ".join(parts), width)
         except Exception:
             return f"⚕ {self.model if getattr(self, 'model', None) else 'Hermes'}"
@@ -3701,6 +3737,8 @@ class HermesCLI:
         if not self._status_bar_visible or getattr(self, '_model_picker_state', None):
             return []
         try:
+            from tools.approval import _get_approval_mode
+
             snapshot = self._get_status_bar_snapshot()
             # Use prompt_toolkit's own terminal width when running inside the
             # TUI — shutil.get_terminal_size() can return stale or fallback
@@ -3709,31 +3747,50 @@ class HermesCLI:
             # line and produce duplicated status bar rows over long sessions.
             width = self._get_tui_terminal_width()
             duration_label = snapshot["duration"]
-            yolo_active = bool(os.getenv("HERMES_YOLO_MODE"))
+            yolo_active = bool(os.getenv("HERMES_YOLO_MODE")) or _get_approval_mode() == "off"
 
             if width < 52:
                 frags = [
                     ("class:status-bar", " ⚕ "),
-                    ("class:status-bar-strong", snapshot["model_short"]),
-                    ("class:status-bar-dim", " · "),
-                    ("class:status-bar-dim", duration_label),
                 ]
                 if yolo_active:
-                    frags.append(("class:status-bar-dim", " · "))
-                    frags.append(("class:status-bar-yolo", "⚠ YOLO"))
+                    frags.append(("class:status-bar-yolo", "⚠ YOLO "))
+                frags.append(("class:status-bar-strong", snapshot["model_short"]))
+                frags.append(("class:status-bar-dim", " · "))
+                frags.append(("class:status-bar-dim", duration_label))
                 frags.append(("class:status-bar", " "))
             else:
                 percent = snapshot["context_percent"]
                 percent_label = f"{percent}%" if percent is not None else "--"
+                # Session title for display (may be None)
+                raw_title = snapshot.get("session_title") or ""
+                title_label = ""
+                if raw_title:
+                    _t = raw_title.strip()
+                    if len(_t) > 36:
+                        _t = _t[:33] + "..."
+                    if _t:
+                        title_label = _t
+
+                sep = ("class:status-bar-dim", " │ ")
                 if width < 76:
                     compressions = snapshot.get("compressions", 0)
                     bg_count = snapshot.get("active_background_tasks", 0)
-                    frags = [
-                        ("class:status-bar", " ⚕ "),
-                        ("class:status-bar-strong", snapshot["model_short"]),
-                        ("class:status-bar-dim", " · "),
-                        (self._status_bar_context_style(percent), percent_label),
-                    ]
+                    frags = []
+                    if title_label:
+                        frags.append(("class:status-bar", " ⚕ "))
+                        if yolo_active:
+                            frags.append(("class:status-bar-yolo", "⚠ YOLO "))
+                        frags.append(("class:status-bar-strong", title_label))
+                        frags.append(sep)
+                        frags.append(("class:status-bar-strong", snapshot["model_short"]))
+                    else:
+                        frags.append(("class:status-bar", " ⚕ "))
+                        if yolo_active:
+                            frags.append(("class:status-bar-yolo", "⚠ YOLO "))
+                        frags.append(("class:status-bar-strong", snapshot["model_short"]))
+                    frags.append(("class:status-bar-dim", " · "))
+                    frags.append((self._status_bar_context_style(percent), percent_label))
                     if compressions:
                         frags.append(("class:status-bar-dim", " · "))
                         frags.append((self._compression_count_style(compressions), f"🗜️ {compressions}"))
@@ -3744,9 +3801,6 @@ class HermesCLI:
                         ("class:status-bar-dim", " · "),
                         ("class:status-bar-dim", duration_label),
                     ])
-                    if yolo_active:
-                        frags.append(("class:status-bar-dim", " · "))
-                        frags.append(("class:status-bar-yolo", "⚠ YOLO"))
                     frags.append(("class:status-bar", " "))
                 else:
                     if snapshot["context_length"]:
@@ -3759,16 +3813,27 @@ class HermesCLI:
                     bar_style = self._status_bar_context_style(percent)
                     compressions = snapshot.get("compressions", 0)
                     bg_count = snapshot.get("active_background_tasks", 0)
-                    frags = [
-                        ("class:status-bar", " ⚕ "),
-                        ("class:status-bar-strong", snapshot["model_short"]),
+                    frags = []
+                    if title_label:
+                        frags.append(("class:status-bar", " ⚕ "))
+                        if yolo_active:
+                            frags.append(("class:status-bar-yolo", "⚠ YOLO "))
+                        frags.append(("class:status-bar-strong", title_label))
+                        frags.append(sep)
+                        frags.append(("class:status-bar-strong", snapshot["model_short"]))
+                    else:
+                        frags.append(("class:status-bar", " ⚕ "))
+                        if yolo_active:
+                            frags.append(("class:status-bar-yolo", "⚠ YOLO "))
+                        frags.append(("class:status-bar-strong", snapshot["model_short"]))
+                    frags.extend([
                         ("class:status-bar-dim", " │ "),
                         ("class:status-bar-dim", context_label),
                         ("class:status-bar-dim", " │ "),
                         (bar_style, self._build_context_bar(percent)),
                         ("class:status-bar-dim", " "),
                         (bar_style, percent_label),
-                    ]
+                    ])
                     if compressions:
                         frags.append(("class:status-bar-dim", " │ "))
                         frags.append((self._compression_count_style(compressions), f"🗜️ {compressions}"))
@@ -3784,9 +3849,6 @@ class HermesCLI:
                     if prompt_elapsed:
                         frags.append(("class:status-bar-dim", " │ "))
                         frags.append(("class:status-bar-dim", prompt_elapsed))
-                    if yolo_active:
-                        frags.append(("class:status-bar-dim", " │ "))
-                        frags.append(("class:status-bar-yolo", "⚠ YOLO"))
                     frags.append(("class:status-bar", " "))
 
             total_width = sum(self._status_bar_display_width(text) for _, text in frags)
@@ -10813,6 +10875,9 @@ class HermesCLI:
         # Open-ended questions skip straight to freetext input
         self._clarify_freetext = is_open_ended
 
+        # Switch terminal status from spinning-work to question-waiting state
+        _terminal_status.ask_question()
+
         # Trigger prompt_toolkit repaint from this (non-main) thread
         self._invalidate()
 
@@ -10830,6 +10895,7 @@ class HermesCLI:
             try:
                 result = response_queue.get(timeout=1)
                 self._clarify_deadline = 0
+                _terminal_status.start_working("Working")
                 return result
             except queue.Empty:
                 remaining = self._clarify_deadline - _time.monotonic()
@@ -10850,6 +10916,7 @@ class HermesCLI:
         self._clarify_deadline = 0
         self._invalidate()
         _cprint(f"\n{_DIM}(clarify timed out after {timeout}s — agent will decide){_RST}")
+        _terminal_status.start_working("Working")
         return (
             "The user did not provide a response within the time limit. "
             "Use your best judgement to make the choice and proceed."
@@ -11361,7 +11428,9 @@ class HermesCLI:
 
         ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
         print(flush=True)
-        
+
+        _terminal_status.start_working("Working")
+
         try:
             # Run the conversation with interrupt monitoring
             result = None
@@ -11755,6 +11824,17 @@ class HermesCLI:
                 sys.stdout.write("\a")
                 sys.stdout.flush()
 
+            # Terminal status — completion state based on agent result.
+            if not result:
+                _terminal_status.error()
+            elif _interrupted_this_turn:
+                _terminal_status.clear()
+            elif result.get("failed") or result.get("partial"):
+                _terminal_status.error()
+            else:
+                _terminal_status.success()
+                time.sleep(0.4)
+
             # Notify when iteration budget was hit
             if result and not result.get("completed") and not result.get("interrupted"):
                 _api_calls = result.get("api_calls", 0)
@@ -11806,6 +11886,7 @@ class HermesCLI:
             return response
             
         except Exception as e:
+            _terminal_status.error()
             print(f"Error: {e}")
             return None
         finally:
@@ -14714,10 +14795,15 @@ def main(
                     # status lines).  The response is printed once below.
                     cli.agent.stream_delta_callback = None
                     cli.agent.tool_gen_callback = None
-                    result = cli.agent.run_conversation(
-                        user_message=effective_query,
-                        conversation_history=cli.conversation_history,
-                    )
+                    _terminal_status.start_working("Working")
+                    try:
+                        result = cli.agent.run_conversation(
+                            user_message=effective_query,
+                            conversation_history=cli.conversation_history,
+                        )
+                    except Exception:
+                        _terminal_status.error()
+                        raise
                     # Sync session_id if mid-run compression created a
                     # continuation session. The exit line below reports
                     # session_id to stderr for automation wrappers; without
@@ -14743,7 +14829,15 @@ def main(
                         print(response)
                     # Session ID goes to stderr so piped stdout is clean.
                     print(f"\nsession_id: {cli.session_id}", file=sys.stderr)
-                    
+
+                    # Terminal status — result state
+                    if isinstance(result, dict) and (result.get("failed") or result.get("partial")):
+                        _terminal_status.error()
+                    else:
+                        _terminal_status.success()
+                        time.sleep(0.4)
+                        _terminal_status.clear()
+
                     # Ensure proper exit code for automation wrappers
                     sys.exit(1 if isinstance(result, dict) and result.get("failed") else 0)
             

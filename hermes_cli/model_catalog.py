@@ -327,3 +327,61 @@ def reset_cache() -> None:
     global _catalog_cache, _catalog_cache_source_mtime
     _catalog_cache = None
     _catalog_cache_source_mtime = 0.0
+
+
+def get_curated_provider_models(provider: str) -> list[str] | None:
+    """Return curated model IDs from a ``model_catalog.providers.<name>``
+    override, or ``None`` if no override is configured.
+
+    Supports two config shapes under ``model_catalog.providers.<name>``:
+
+    1. ``url: <manifest-url>`` — fetch a remote/local catalog manifest in
+       the same schema as the main catalog (version >= 1, ``providers`` dict
+       with a ``<name>`` block containing ``models``).  This is the same
+       path that ``get_curated_openrouter_models`` already uses for
+       OpenRouter.
+
+    2. An inline list of model ID strings — useful for small curated lists
+       that don't warrant a separate manifest file.
+
+    Returns ``None`` when the catalog is disabled, the provider has no
+    entry, the entry is not a supported shape, or the remote manifest is
+    unreachable.  Callers fall back to their in-repo hardcoded list.
+    """
+    cfg = _load_catalog_config()
+    if not cfg["enabled"]:
+        return None
+
+    provider_cfg = cfg["providers"].get(provider)
+    if provider_cfg is None:
+        return None
+
+    # Case 1: dict with url key — fetch remote/local manifest via the
+    # existing _get_provider_block path (same as openrouter/nous use).
+    if isinstance(provider_cfg, dict):
+        url = provider_cfg.get("url")
+        if isinstance(url, str) and url.strip():
+            block = _get_provider_block(provider)
+            if block:
+                models = block.get("models", [])
+                if not isinstance(models, list):
+                    return None
+                ids: list[str] = []
+                for m in models:
+                    if isinstance(m, dict):
+                        mid = str(m.get("id") or "").strip()
+                    elif isinstance(m, str):
+                        mid = m.strip()
+                    else:
+                        continue
+                    if mid:
+                        ids.append(mid)
+                return ids or None
+        return None  # dict but no url → not an override for this function
+
+    # Case 2: inline list of model ID strings
+    if isinstance(provider_cfg, list):
+        ids = [str(m).strip() for m in provider_cfg if isinstance(m, str) and m.strip()]
+        return ids or None
+
+    return None
