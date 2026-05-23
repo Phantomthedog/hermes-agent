@@ -200,8 +200,9 @@ HARDLINE_PATTERNS = [
     (r'\brm\s+(-[^\s]*\s+)*(/|/\*|/ \*)(\s|$)', "recursive delete of root filesystem"),
     (r'\brm\s+(-[^\s]*\s+)*(/home|/home/\*|/root|/root/\*|/etc|/etc/\*|/usr|/usr/\*|/var|/var/\*|/bin|/bin/\*|/sbin|/sbin/\*|/boot|/boot/\*|/lib|/lib/\*)(\s|$)', "recursive delete of system directory"),
     (r'\brm\s+(-[^\s]*\s+)*(~|\$HOME)(/?|/\*)?(\s|$)', "recursive delete of home directory"),
-    # Filesystem format
-    (r'\bmkfs(\.[a-z0-9]+)?\b', "format filesystem (mkfs)"),
+    # Raw block device mkfs — formatting a block device is irrecoverable
+    # (same class as dd of=/dev/... which remains hardline below).
+    (_CMDPOS + r'(?:/\S*/)?mkfs(?:\.[a-z0-9]+)?\b.*?\b/dev/', "format filesystem on block device"),
     # Raw block device overwrites (dd + redirection)
     (r'\bdd\b[^\n]*\bof=/dev/(sd|nvme|hd|mmcblk|vd|xvd)[a-z0-9]*', "dd to raw block device"),
     (r'>\s*/dev/(sd|nvme|hd|mmcblk|vd|xvd)[a-z0-9]*\b', "redirect to raw block device"),
@@ -209,14 +210,6 @@ HARDLINE_PATTERNS = [
     (r':\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:', "fork bomb"),
     # Kill every process on the system
     (r'\bkill\s+(-[^\s]+\s+)*-1\b', "kill all processes"),
-    # System shutdown / reboot — anchor to command position (start of line,
-    # after a command separator, or after sudo/env wrappers) so we don't
-    # false-positive on "echo reboot" or "grep 'shutdown' logs".
-    # _CMDPOS matches start-of-command positions.
-    (_CMDPOS + r'(shutdown|reboot|halt|poweroff)\b', "system shutdown/reboot"),
-    (_CMDPOS + r'init\s+[06]\b', "init 0/6 (shutdown/reboot)"),
-    (_CMDPOS + r'systemctl\s+(poweroff|reboot|halt|kexec)\b', "systemctl poweroff/reboot"),
-    (_CMDPOS + r'telinit\s+[06]\b', "telinit 0/6 (shutdown/reboot)"),
 ]
 
 # Pre-compiled variant used by the hot-path matcher. Building these at module
@@ -321,7 +314,7 @@ DANGEROUS_PATTERNS = [
     (r'\bchmod\s+--recursive\b.*(777|666|o\+[rwx]*w|a\+[rwx]*w)', "recursive world/other-writable (long flag)"),
     (r'\bchown\s+(-[^\s]*)?R\s+root', "recursive chown to root"),
     (r'\bchown\s+--recursive\b.*root', "recursive chown to root (long flag)"),
-    (r'\bmkfs\b', "format filesystem"),
+    (_CMDPOS + r'(?:/\S*/)?mkfs(?:\.[a-z0-9]+)?\b', "format filesystem"),
     (r'\bdd\s+.*if=', "disk copy"),
     (r'>\s*/dev/sd', "write to block device"),
     (r'\bDROP\s+(TABLE|DATABASE)\b', "SQL DROP"),
@@ -412,6 +405,44 @@ DANGEROUS_PATTERNS = [
     # into a single -X token. Catches the same threat class.
     (r'\bsudo\b[^;|&\n]*?\s+-[a-z]*[sa][a-z]*\b',
      "sudo with combined-flag privilege escalation"),
+    # =====================================================================
+    # Shutdown/reboot — moved from HARDLINE to approval-required.
+    # Recoverable operations that yolo/approvals.mode=off can bypass.
+    # =====================================================================
+    (_CMDPOS + r'(shutdown|reboot|halt|poweroff)\b', "system shutdown/reboot"),
+    (_CMDPOS + r'init\s+[06]\b', "init 0/6 (shutdown/reboot)"),
+    (_CMDPOS + r'systemctl\s+(poweroff|reboot|halt|kexec)\b', "systemctl poweroff/reboot"),
+    (_CMDPOS + r'telinit\s+[06]\b', "telinit 0/6 (shutdown/reboot)"),
+    # =====================================================================
+    # Disk and partition tools (approval-required)
+    # =====================================================================
+    (_CMDPOS + r'\bfdisk\b', "disk partition tool"),
+    (_CMDPOS + r'\bparted\b', "disk partition tool"),
+    (_CMDPOS + r'\bmount\b', "mount filesystem"),
+    (_CMDPOS + r'\bumount\b', "unmount filesystem"),
+    # =====================================================================
+    # Service management
+    # =====================================================================
+    (_CMDPOS + r'\bservice\s+\S+\s+(start|stop|restart|reload|force-reload)\b', "service management command"),
+    # =====================================================================
+    # Firewall / network filter configuration
+    # =====================================================================
+    (_CMDPOS + r'\biptables\b', "firewall configuration"),
+    (_CMDPOS + r'\bnft\b', "firewall configuration"),
+    # =====================================================================
+    # Docker destructive commands (rm, rmi, prune, volume rm, network rm)
+    # =====================================================================
+    (_CMDPOS + r'\bdocker\s+(rm|rmi|system\s+prune|volume\s+rm|network\s+rm|image\s+rm|container\s+rm|compose\s+down\s+--volumes)\b', "docker destructive command"),
+    # =====================================================================
+    # Package management (system-level install/remove/purge/autoremove)
+    # =====================================================================
+    (_CMDPOS + r'\b(apt-get|apt|yum|dnf|zypper|pacman)\s+(install|remove|purge|autoremove)\b', "package management command"),
+    (_CMDPOS + r'\bpip\s+install\b.*--(system|break-system)', "pip system package install"),
+    # =====================================================================
+    # Network interface configuration
+    # =====================================================================
+    (_CMDPOS + r'\bip\s+(link|addr)\s+(set|add|del|flush)\b', "network interface configuration"),
+    (_CMDPOS + r'\bnmcli\s+device\s+(modify|disconnect|delete)\b', "network manager device configuration"),
 ]
 
 
@@ -420,6 +451,91 @@ DANGEROUS_PATTERNS_COMPILED = [
     (re.compile(pattern, _RE_FLAGS), description)
     for pattern, description in DANGEROUS_PATTERNS
 ]
+
+
+# =========================================================================
+# Owner mode / safe-path allowlisting
+# =========================================================================
+# When the agent is working inside known safe workspace paths, certain
+# *path-dependent* dangerous-command patterns are exempted from approval
+# prompts.  Only applies to pattern keys listed in ``_PATH_DEPENDENT_KEYS``
+# below.  Non-path-dependent patterns (curl|sh, systemctl, python -c, etc.)
+# always trigger normal approval, even when the command contains safe paths.
+#
+# Only applies to path-dependent patterns when EVERY absolute path argument
+# in the command resolves to a prefix below.  Commands with no absolute
+# path arguments or with any path outside the safe list still trigger
+# normal approval.
+SAFE_PATH_PREFIXES: list[str] = [
+    "/home/jack/AI_WORKSPACE",
+    "/mnt/e/AI_WORKSPACE",
+]
+
+# Resolved (realpath) versions — built once at module load
+_RESOLVED_SAFE_PREFIXES: list[str] = []
+for _prefix in SAFE_PATH_PREFIXES:
+    try:
+        _resolved = os.path.realpath(os.path.expanduser(_prefix))
+        _RESOLVED_SAFE_PREFIXES.append(_resolved)
+    except (OSError, ValueError):
+        _RESOLVED_SAFE_PREFIXES.append(os.path.expanduser(_prefix))
+# Also add trailing-slash variants for prefix matching
+_RESOLVED_SAFE_PREFIXES = [p if p.endswith("/") else p + "/" for p in _RESOLVED_SAFE_PREFIXES]
+
+# Only these pattern keys are eligible for safe-path bypass.
+# Pattern-key values are the description strings from DANGEROUS_PATTERNS.
+_PATH_DEPENDENT_KEYS: frozenset = frozenset([
+    "delete in root path",
+    "recursive delete",
+    "recursive delete (long flag)",
+    "world/other-writable permissions",
+    "recursive world/other-writable (long flag)",
+    "recursive chown to root",
+    "recursive chown to root (long flag)",
+    "git clean with force",
+    "format filesystem",
+])
+
+
+def _extract_absolute_paths(command: str) -> list[str]:
+    """Extract absolute path arguments from a shell command string.
+
+    Returns resolved paths (via realpath) for tokens that look like
+    absolute or home-relative paths and are not flag arguments.
+    """
+    import shlex
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return []
+    paths: list[str] = []
+    for token in tokens:
+        if token.startswith("-"):
+            continue
+        if token.startswith("/") or token.startswith("~"):
+            try:
+                expanded = os.path.expanduser(token)
+                paths.append(os.path.realpath(expanded))
+            except (OSError, ValueError):
+                paths.append(token)
+    return paths
+
+
+def is_on_allowed_path(command: str) -> bool:
+    """Return True when EVERY absolute path in *command* resolves under a
+    known safe workspace prefix.
+
+    Commands with no absolute paths, or with any path outside the safe
+    list, return False (normal approval flow applies).
+    """
+    abs_paths = _extract_absolute_paths(command)
+    if not abs_paths:
+        return False
+    for path in abs_paths:
+        normalized = path if path.endswith("/") else path + "/"
+        if not any(normalized.startswith(p) for p in _RESOLVED_SAFE_PREFIXES):
+            return False
+    return True
 
 
 def _legacy_pattern_key(pattern: str) -> str:
@@ -1117,6 +1233,21 @@ def check_all_command_guards(command: str, env_type: str,
 
     # Dangerous command check (detection only, no approval)
     is_dangerous, pattern_key, description = detect_dangerous_command(command)
+
+    # --- Path-based allowlisting (path-dependent patterns only) ---
+    # If EVERY absolute path argument in the command resolves under a known
+    # safe workspace prefix, AND the matched pattern is a path-dependent
+    # key, skip the dangerous-command warning.
+    # Non-path-dependent patterns (curl|sh, systemctl, python -c, etc.)
+    # always trigger normal approval regardless of paths.
+    if is_dangerous and pattern_key and pattern_key in _PATH_DEPENDENT_KEYS:
+        try:
+            if is_on_allowed_path(command):
+                is_dangerous = False
+                pattern_key = None
+                description = None
+        except Exception:
+            pass  # Conservative: fall through to normal checking
 
     # --- Phase 2: Decide ---
 
