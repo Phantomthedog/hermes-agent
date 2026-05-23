@@ -4230,6 +4230,11 @@ def run_conversation(
     # Auto-generate session title after first exchange (synchronous).
     # Clear the auxiliary client cache first so discovery falls through
     # to a working provider chain rather than reusing a stale client.
+    import logging as _ts_log
+    _ts_log.getLogger(__name__).info(
+        "AUTO_TITLE_CHECK: final_response=%s session_db=%s session_id=%s",
+        bool(final_response), bool(agent._session_db), agent.session_id,
+    )
     if final_response and agent._session_db and agent.session_id:
         try:
             from agent.title_generator import auto_title_session
@@ -4246,8 +4251,8 @@ def run_conversation(
                 original_user_message,
                 final_response,
             )
-        except Exception:
-            pass  # Title generation is best-effort
+        except Exception as _ts_exc:
+            _ts_log.getLogger(__name__).warning("AUTO_TITLE_FAILED: %s", _ts_exc)
     return result
 
 
