@@ -176,6 +176,10 @@ def run_oneshot(
     real_stdout = sys.stdout
     devnull = open(os.devnull, "w", encoding="utf-8")
 
+    # Terminal status — show working state (goes to /dev/tty, unaffected by redirect)
+    from agent import terminal_status as _oneshot_ts
+    _oneshot_ts.start_working("Working")
+
     try:
         with redirect_stdout(devnull), redirect_stderr(devnull):
             response = _run_agent(
@@ -185,6 +189,9 @@ def run_oneshot(
                 toolsets=explicit_toolsets,
                 use_config_toolsets=use_config_toolsets,
             )
+    except BaseException:
+        _oneshot_ts.error()
+        raise
     finally:
         try:
             devnull.close()
@@ -196,6 +203,11 @@ def run_oneshot(
         if not response.endswith("\n"):
             real_stdout.write("\n")
         real_stdout.flush()
+
+    # Terminal status — success (persists until next turn)
+    _oneshot_ts.success()
+    import time as _oneshot_time
+    _oneshot_time.sleep(0.4)
     return 0
 
 
