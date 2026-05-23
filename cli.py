@@ -11124,6 +11124,9 @@ class HermesCLI:
                     return
             else:
                 self._no_speech_count = 0
+                # Disable continuous mode after successful transcript so
+                # recording does NOT auto-restart after agent responds.
+                self._voice_continuous = False
 
             # If no transcript was submitted but continuous mode is active,
             # restart recording so the user can keep talking.
