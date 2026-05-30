@@ -893,6 +893,7 @@ def get_prompt_toolkit_style_overrides() -> Dict[str, str]:
         "status-bar": f"bg:{status_bg} {status_text}",
         "status-bar-strong": f"bg:{status_bg} {status_strong} bold",
         "status-bar-dim": f"bg:{status_bg} {status_dim}",
+        "status-bar-title": f"bg:{status_bg} ansicyan bold",
         "status-bar-good": f"bg:{status_bg} {status_good} bold",
         "status-bar-warn": f"bg:{status_bg} {status_warn} bold",
         "status-bar-bad": f"bg:{status_bg} {status_bad} bold",

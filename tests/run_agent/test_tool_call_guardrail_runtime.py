@@ -295,7 +295,7 @@ def test_config_enabled_hard_stop_run_conversation_returns_controlled_guardrail_
     assert result["turn_exit_reason"] == "guardrail_halt"
     assert "error" not in result
     assert result["completed"] is True
-    assert "stopped retrying" in result["final_response"]
+    assert "Guardrail halt" in result["final_response"]
     assert result["guardrail"]["code"] == "repeated_exact_failure_block"
     assert result["guardrail"]["tool_name"] == "web_search"
 
@@ -304,3 +304,38 @@ def test_config_enabled_hard_stop_run_conversation_returns_controlled_guardrail_
         call_ids = [tc["id"] for tc in assistant_msg["tool_calls"]]
         following_results = [m for m in result["messages"] if m.get("role") == "tool" and m.get("tool_call_id") in call_ids]
         assert len(following_results) == len(call_ids)
+
+
+def test_guardrail_halt_emits_to_stream_delta_callback():
+    """Guardrail halt message must reach stream_delta_callback."""
+    agent = _make_agent("web_search", max_iterations=10, config=_hard_stop_config())
+    agent._disable_streaming = True
+    same_args = {"query": "same"}
+    responses = [
+        _mock_response(
+            content="",
+            finish_reason="tool_calls",
+            tool_calls=[_mock_tool_call("web_search", json.dumps(same_args), f"c{i}")],
+        )
+        for i in range(1, 6)
+    ]
+    # Final response after guardrail halt
+    responses.append(_mock_response(content="done", finish_reason="stop", tool_calls=None))
+    agent.client.chat.completions.create.side_effect = responses
+    stream_deltas = []
+    agent.stream_delta_callback = lambda text: stream_deltas.append(text)
+
+    with (
+        patch("run_agent.handle_function_call", return_value=json.dumps({"error": "boom"})),
+        patch.object(agent, "_persist_session"),
+        patch.object(agent, "_save_trajectory"),
+        patch.object(agent, "_cleanup_task_resources"),
+    ):
+        result = agent.run_conversation("search repeatedly")
+
+    assert result["turn_exit_reason"] == "guardrail_halt"
+    # The halt response text must appear in stream_deltas (not just the None flush)
+    halt_deltas = [d for d in stream_deltas if d is not None and "Guardrail halt" in d]
+    assert halt_deltas, (
+        f"Guardrail halt message not found in stream_deltas: {stream_deltas}"
+    )

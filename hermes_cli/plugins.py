@@ -1448,6 +1448,8 @@ def get_pre_tool_call_block_message(
         fmt = getattr(_thread_tool_whitelist, "fmt", "Tool '{tool_name}' denied")
         return fmt.format(tool_name=tool_name)
 
+    _ensure_plugins_discovered()
+
     hook_results = invoke_hook(
         "pre_tool_call",
         tool_name=tool_name,
