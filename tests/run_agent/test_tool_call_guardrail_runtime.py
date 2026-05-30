@@ -295,7 +295,7 @@ def test_config_enabled_hard_stop_run_conversation_returns_controlled_guardrail_
     assert result["turn_exit_reason"] == "guardrail_halt"
     assert "error" not in result
     assert result["completed"] is True
-    assert "stopped retrying" in result["final_response"]
+    assert "Guardrail halt" in result["final_response"]
     assert result["guardrail"]["code"] == "repeated_exact_failure_block"
     assert result["guardrail"]["tool_name"] == "web_search"
 
@@ -344,7 +344,7 @@ def test_guardrail_halt_emits_final_response_through_stream_delta_callback():
 
     assert result["turn_exit_reason"] == "guardrail_halt"
     halt_text = result["final_response"]
-    assert "stopped retrying" in halt_text
+    assert "Guardrail halt" in halt_text
 
     # The halt message must have been pushed through the callback at least
     # once.  Empty-queue SSE writers were the bug — clients saw no content

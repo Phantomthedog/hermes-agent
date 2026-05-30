@@ -4330,11 +4330,27 @@ class AIAgent:
 
     def _toolguard_controlled_halt_response(self, decision: ToolGuardrailDecision) -> str:
         tool = decision.tool_name or "a tool"
+        code = decision.code
+        count = decision.count
+        if code == "same_tool_failure_halt":
+            return (
+                f"🛑 Guardrail halt: {tool} failed {count} times this turn "
+                f"({code}).\n"
+                "The tool-call loop has been stopped. Do NOT call any tools "
+                "in this response.\n"
+                "Recovery steps:\n"
+                "1. Read the last tool result for the exact error.\n"
+                "2. Summarise the failed approach and identify the blocker.\n"
+                "3. Give Jack ONE exact manual command or script-based "
+                "recovery path that he can paste directly.\n"
+                "4. Do NOT continue debugging — report what you know and "
+                "hand off."
+            )
         return (
-            f"I stopped retrying {tool} because it hit the tool-call guardrail "
-            f"({decision.code}) after {decision.count} repeated non-progressing "
-            "attempts. The last tool result explains the blocker; the next step is "
-            "to change strategy instead of repeating the same call."
+            f"🛑 Guardrail halt: {tool} {code} (count={count}).\n"
+            "The tool-call loop has been stopped. "
+            "Read the last tool result, summarise the blocker, "
+            "and recommend the next action to Jack."
         )
 
     def _append_guardrail_observation(

@@ -3879,19 +3879,16 @@ def run_conversation(
                         f"⚠️ Tool guardrail halted {decision.tool_name}: {decision.code}"
                     )
                     messages.append({"role": "assistant", "content": final_response})
-                    # Emit the halt message to the client so it's not
-                    # indistinguishable from a crash.  The stream display
-                    # was flushed (callback(None)) before tool execution,
-                    # but the callback is still alive — fire the text
-                    # through it so SSE/TUI clients see the explanation.
-                    if final_response:
-                        agent._safe_print(f"\n{final_response}\n")
-                        if agent.stream_delta_callback:
-                            try:
-                                agent.stream_delta_callback(final_response)
-                                agent.stream_delta_callback(None)
-                            except Exception:
-                                pass
+                    # Emit the halt response through stream_delta_callback so
+                    # SSE/gateway/TUI clients receive it before the stream closes.
+                    # Without this explicit emission the turn exits silently on
+                    # streaming transports because the break skips the normal
+                    # streaming path (#30770).
+                    if agent.stream_delta_callback:
+                        try:
+                            agent.stream_delta_callback(final_response)
+                        except Exception:
+                            pass
                     break
 
                 # Reset per-turn retry counters after successful tool
@@ -4739,11 +4736,6 @@ def run_conversation(
     # Auto-generate session title after first exchange (synchronous).
     # Clear the auxiliary client cache first so discovery falls through
     # to a working provider chain rather than reusing a stale client.
-    import logging as _ts_log
-    _ts_log.getLogger(__name__).info(
-        "AUTO_TITLE_CHECK: final_response=%s session_db=%s session_id=%s",
-        bool(final_response), bool(agent._session_db), agent.session_id,
-    )
     if final_response and agent._session_db and agent.session_id:
         try:
             from agent.title_generator import auto_title_session
@@ -4760,8 +4752,8 @@ def run_conversation(
                 original_user_message,
                 final_response,
             )
-        except Exception as _ts_exc:
-            _ts_log.getLogger(__name__).warning("AUTO_TITLE_FAILED: %s", _ts_exc)
+        except Exception as e:
+            logger.warning("Title generation failed: %s", e)
     return result
 
 

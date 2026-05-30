@@ -193,6 +193,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 from hermes_cli.plugins import get_pre_tool_call_block_message
                 block_message = get_pre_tool_call_block_message(
                     function_name, function_args, task_id=effective_task_id or "",
+                    session_id=agent.session_id or "",
                 )
             except Exception:
                 block_message = None
@@ -594,6 +595,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 from hermes_cli.plugins import get_pre_tool_call_block_message
                 _block_msg = get_pre_tool_call_block_message(
                     function_name, function_args, task_id=effective_task_id or "",
+                    session_id=agent.session_id or "",
                 )
             except Exception:
                 pass

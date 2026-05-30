@@ -3905,7 +3905,7 @@ class HermesCLI:
                         frags.append(("class:status-bar", " ⚕ "))
                         if yolo_active:
                             frags.append(("class:status-bar-yolo", "⚠ YOLO "))
-                        frags.append(("class:status-bar-strong", title_label))
+                        frags.append(("class:status-bar-title", title_label))
                         frags.append(sep)
                         frags.append(("class:status-bar-strong", snapshot["model_short"]))
                     else:
@@ -3946,7 +3946,7 @@ class HermesCLI:
                         frags.append(("class:status-bar", " ⚕ "))
                         if yolo_active:
                             frags.append(("class:status-bar-yolo", "⚠ YOLO "))
-                        frags.append(("class:status-bar-strong", title_label))
+                        frags.append(("class:status-bar-title", title_label))
                         frags.append(sep)
                         frags.append(("class:status-bar-strong", snapshot["model_short"]))
                     else:
