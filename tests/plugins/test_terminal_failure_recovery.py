@@ -10,19 +10,40 @@ Verifies:
 
 import json
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Add the plugin dir to path
-sys.path.insert(0, "/home/jack/.hermes/plugins")
+import pytest
 
-from terminal_failure_recovery import (
-    _classify_family,
-    _classify_terminal_failure,
-    _get_session,
-    _on_post_tool_call,
-    _on_pre_tool_call,
-    _on_session_start,
-    SessionState,
+# Add the plugin dir to path
+PLUGIN_DIR = Path.home() / ".hermes" / "plugins"
+sys.path.insert(0, str(PLUGIN_DIR))
+
+try:
+    from terminal_failure_recovery import (
+        _classify_family,
+        _classify_terminal_failure,
+        _get_session,
+        _on_post_tool_call,
+        _on_pre_tool_call,
+        _on_session_start,
+        SessionState,
+    )
+    _HAS_TERMINAL_FAILURE_RECOVERY_PLUGIN = True
+except ModuleNotFoundError:
+    _classify_family = None
+    _classify_terminal_failure = None
+    _get_session = None
+    _on_post_tool_call = None
+    _on_pre_tool_call = None
+    _on_session_start = None
+    SessionState = None
+    _HAS_TERMINAL_FAILURE_RECOVERY_PLUGIN = False
+
+
+pytestmark = pytest.mark.skipif(
+    not _HAS_TERMINAL_FAILURE_RECOVERY_PLUGIN,
+    reason="external terminal_failure_recovery plugin is not installed",
 )
 
 
