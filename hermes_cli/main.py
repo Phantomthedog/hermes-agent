@@ -1527,6 +1527,30 @@ def _normalize_tui_toolsets(toolsets: object) -> list[str]:
         return [item for item in normalized if item]
 
 
+def _resolve_tui_dir() -> Path:
+    """Resolve the TUI workspace directory for source and packaged installs."""
+    default = PROJECT_ROOT / "ui-tui"
+    if default.is_dir():
+        return default
+
+    # Packaged installs may not include ui-tui under site-packages.
+    # Fall back to a local checkout under the Hermes root.
+    try:
+        from hermes_constants import get_default_hermes_root
+
+        root = get_default_hermes_root()
+    except Exception:
+        root = Path(os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes"))
+        if root.parent.name == "profiles":
+            root = root.parent.parent
+
+    candidate = root / "hermes-agent" / "ui-tui"
+    if candidate.is_dir():
+        return candidate
+
+    return default
+
+
 def _launch_tui(
     resume_session_id: Optional[str] = None,
     tui_dev: bool = False,
@@ -1545,7 +1569,7 @@ def _launch_tui(
     accept_hooks: bool = False,
 ):
     """Replace current process with the TUI."""
-    tui_dir = PROJECT_ROOT / "ui-tui"
+    tui_dir = _resolve_tui_dir()
 
     import tempfile
 
