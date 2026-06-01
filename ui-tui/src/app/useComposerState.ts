@@ -85,13 +85,25 @@ export function looksLikeDroppedPath(text: string): boolean {
     return true
   }
 
-  // Bare absolute paths (start with /) — require a second '/' or a '.' to avoid
-  // false positives on short strings like "/api" or "/help" which would trigger
-  // unnecessary RPC round-trips.
+  // Bare absolute paths (start with /) — require stronger evidence that it's
+  // a file path rather than a code snippet, API endpoint, or command.
   if (trimmed.startsWith('/')) {
     const rest = trimmed.slice(1)
 
-    return rest.includes('/') || rest.includes('.')
+    // Must have at least one directory separator
+    if (!rest.includes('/')) {
+      return false
+    }
+
+    // Has a '.' in the last path component → probable file extension
+    const lastSegment = rest.split('/').pop() ?? ''
+    if (lastSegment.includes('.')) {
+      return true
+    }
+
+    // Deep path (2+ levels) with no spaces → plausible directory path
+    const depth = rest.split('/').length
+    return depth >= 2
   }
 
   return false
@@ -154,24 +166,32 @@ export function useComposerState({
       const sid = getUiState().sid
 
       if (sid && looksLikeDroppedPath(cleanedText)) {
-        try {
-          const attached = await gw.request<ImageAttachResponse>('image.attach', {
-            path: cleanedText,
-            session_id: sid
-          })
+        // Only call image.attach for known image extensions — avoids
+        // "image not found" errors for non-image paths (.md, .txt, etc.).
+        const imageExtMatch = cleanedText.match(/\.(\w+)$/)
+        const ext = imageExtMatch?.[1]?.toLowerCase() ?? ''
+        const isImageExt = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif', 'svg', 'ico'].includes(ext)
 
-          if (attached?.name) {
-            onImageAttached?.(attached)
-            const remainder = attached.remainder?.trim() ?? ''
+        if (isImageExt) {
+          try {
+            const attached = await gw.request<ImageAttachResponse>('image.attach', {
+              path: cleanedText,
+              session_id: sid
+            })
 
-            if (!remainder) {
-              return { cursor, value }
+            if (attached?.name) {
+              onImageAttached?.(attached)
+              const remainder = attached.remainder?.trim() ?? ''
+
+              if (!remainder) {
+                return { cursor, value }
+              }
+
+              return insertAtCursor(value, cursor, remainder)
             }
-
-            return insertAtCursor(value, cursor, remainder)
+          } catch {
+            // Fall back to generic file-drop detection below.
           }
-        } catch {
-          // Fall back to generic file-drop detection below.
         }
 
         try {
