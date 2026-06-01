@@ -1,10 +1,10 @@
-import type { InputEvent, Key } from '@hermes/ink'
+import { forceRedraw, invalidatePrevFrame, type InputEvent, type Key } from '@hermes/ink'
 import * as Ink from '@hermes/ink'
 import { type MutableRefObject, useEffect, useMemo, useRef, useState } from 'react'
 
 import { setInputSelection } from '../app/inputSelectionStore.js'
 import { readClipboardText, writeClipboardText } from '../lib/clipboard.js'
-import { cursorLayout, offsetFromPosition } from '../lib/inputMetrics.js'
+import { cursorLayout, inputVisualHeight, offsetFromPosition } from '../lib/inputMetrics.js'
 import {
   DEFAULT_VOICE_RECORD_KEY,
   isActionMod,
@@ -736,6 +736,10 @@ export function TextInput({
             const v = vRef.current
             commit(v.slice(0, cur) + fallbackText + v.slice(cur), cur + fallbackText.length)
           }
+
+          // Force a full-damage diff on the next render so Ink diffs every cell
+          // rather than reusing stale wrapped-rows from the pre-paste frame.
+          invalidatePrevFrame(stdout)
         })
         .catch(() => {})
 
@@ -744,6 +748,7 @@ export function TextInput({
 
     if (h) {
       commit(h.value, h.cursor)
+      invalidatePrevFrame(stdout)
     }
 
     return !!h
@@ -836,6 +841,7 @@ export function TextInput({
     const nextCursor = range ? range.start + cleaned.length : curRef.current + cleaned.length
 
     commit(nextValue, nextCursor)
+    invalidatePrevFrame(stdout)
   }
 
   const startMouseSelection = (next: number) => {
@@ -1130,6 +1136,7 @@ export function TextInput({
 
             if (!emitPaste({ cursor: c, text, value: v })) {
               commit(ins(v, c, text), c + text.length)
+              invalidatePrevFrame(stdout)
             }
 
             return
@@ -1144,6 +1151,13 @@ export function TextInput({
           v = inserted.value
           c = inserted.cursor
           scheduleKeyBurstCommit(v, c)
+
+          // Single-line paste of 2+ characters (wraps across visual rows).
+          // Call invalidatePrevFrame so Ink's frame diff re-renders every cell
+          // instead of reusing stale wrapped-row cells from the pre-paste frame.
+          if (text.length > 1) {
+            invalidatePrevFrame(stdout)
+          }
 
           return
         }
