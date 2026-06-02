@@ -36,6 +36,9 @@ const PRINTABLE = /^[ -~\u00a0-\uffff]+$/
 const BRACKET_PASTE = new RegExp(`${ESC}?\\[20[01]~`, 'g')
 const FRAME_BATCH_MS = 16
 const MULTI_CLICK_MS = 500
+// Paste chunks arriving within this window are accumulated into a single
+// paste event so the collapse threshold sees the full text (ConPTY/WSL).
+const PASTE_BUFFER_MS = 120
 type MinimalEnv = Record<string, string | undefined>
 
 const invert = (s: string) => INV + s + INV_OFF
@@ -475,6 +478,14 @@ export function TextInput({
   cbSubmit.current = onSubmit
   cbPaste.current = onPaste
 
+  // Paste chunk accumulator: ConPTY / Windows Terminal splits large
+  // bracketed pastes across multiple useInput events, each chunk too
+  // small to trigger the collapse threshold.  Buffer all isPasted
+  // chunks together so the paste handler sees the full text.
+  const pasteBufferRef = useRef<{ chunks: string[]; cursor: number; value: string } | null>(null)
+  const pasteFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pasteFlushFnRef = useRef<() => void>(() => {})
+
   const raw = self.current ? vRef.current : value
   const display = mask ? raw.replace(/[^\n]/g, mask[0] ?? '*') : raw
 
@@ -754,6 +765,21 @@ export function TextInput({
     return !!h
   }
 
+  // Wire up the paste-chunk flush function now that emitPaste is defined.
+  pasteFlushFnRef.current = () => {
+    if (pasteFlushTimerRef.current) {
+      clearTimeout(pasteFlushTimerRef.current)
+      pasteFlushTimerRef.current = null
+    }
+    const buf = pasteBufferRef.current
+    if (!buf) return
+    pasteBufferRef.current = null
+    const fullText = buf.chunks.join('')
+    if (fullText) {
+      emitPaste({ bracketed: false, cursor: buf.cursor, text: fullText, value: buf.value })
+    }
+  }
+
   const flushKeyBurst = () => {
     if (keyBurstTimer.current) {
       clearTimeout(keyBurstTimer.current)
@@ -941,6 +967,30 @@ export function TextInput({
         }
 
         return
+      }
+
+      // ── Paste chunk accumulator ──────────────────────────────────────────
+      // ConPTY / Windows Terminal splits large bracketed pastes across
+      // multiple useInput events, each chunk too small to trigger the
+      // collapse threshold in handleResolvedPaste.  Buffer all isPasted
+      // chunks together so the paste handler sees the full text.
+      if (event.keypress.isPasted) {
+        const chunk = inp.replace(BRACKET_PASTE, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+        if (chunk) {
+          if (!pasteBufferRef.current) {
+            pasteBufferRef.current = { chunks: [], cursor: curRef.current, value: vRef.current }
+          }
+          pasteBufferRef.current.chunks.push(chunk)
+          if (pasteFlushTimerRef.current) clearTimeout(pasteFlushTimerRef.current)
+          pasteFlushTimerRef.current = setTimeout(pasteFlushFnRef.current, PASTE_BUFFER_MS)
+        }
+        flushKeyBurst()
+        return
+      }
+      // Non-paste event: flush any stale paste buffer immediately
+      if (pasteBufferRef.current) {
+        if (pasteFlushTimerRef.current) clearTimeout(pasteFlushTimerRef.current)
+        pasteFlushFnRef.current()
       }
 
       if (isMac && isActionMod(k) && inp.toLowerCase() === 'c') {
