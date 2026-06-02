@@ -153,7 +153,8 @@ export default class App extends PureComponent<Props, State> {
   incompleteEscapeTimer: NodeJS.Timeout | null = null
   // Timeout durations for incomplete sequences (ms)
   readonly NORMAL_TIMEOUT = 50 // Short timeout for regular esc sequences
-  readonly PASTE_TIMEOUT = 50 // Shorter timeout: prevents compounding delays on chunked ConPTY pastes
+  // 500ms is needed for Win+WSL ConPTY chunked paste; 50ms can flush between chunks.
+  readonly PASTE_TIMEOUT = 500
 
   // Terminal query/response dispatch. Responses arrive on stdin (parsed
   // out by parse-keypress) and are routed to pending promise resolvers.
