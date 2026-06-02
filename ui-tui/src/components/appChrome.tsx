@@ -300,6 +300,7 @@ export function StatusRule({
   model,
   modelFast,
   modelReasoningEffort,
+  titleLabel,
   usage,
   bgCount,
   liveSessionCount,
@@ -354,6 +355,12 @@ export function StatusRule({
           {' │ '}
           {modelLabel(model, modelReasoningEffort, modelFast)}
         </Text>
+        {titleLabel ? (
+          <Text color={t.color.muted} wrap="truncate-end">
+            {' │ '}
+            <Text color={t.color.label}>{titleLabel}</Text>
+          </Text>
+        ) : null}
         {ctxLabel ? (
           <Text color={t.color.muted} wrap="truncate-end">
             {' │ '}
@@ -535,6 +542,7 @@ interface StatusRuleProps {
   status: string
   statusColor: string
   t: Theme
+  titleLabel?: string
   turnStartedAt?: null | number
   usage: Usage
   voiceLabel?: string

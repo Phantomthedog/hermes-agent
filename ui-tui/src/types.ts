@@ -156,6 +156,7 @@ export interface SessionInfo {
   skills: Record<string, string[]>
   system_prompt?: string
   tools: Record<string, string[]>
+  title?: string
   update_behind?: number | null
   update_command?: string
   usage?: Usage

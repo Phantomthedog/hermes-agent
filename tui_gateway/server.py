@@ -586,7 +586,7 @@ def _start_agent_build(sid: str, session: dict) -> None:
             _sessions[sid]["_notif_stop"] = _start_notification_poller(sid, _sessions[sid])
             _notify_session_boundary("on_session_reset", key)
 
-            info = _session_info(agent)
+            info = _session_info(agent, session=_sessions[sid])
             warn = _probe_credentials(agent)
             if warn:
                 info["credential_warning"] = warn
@@ -1174,7 +1174,7 @@ def _apply_model_switch(sid: str, session: dict, raw_input: str) -> dict:
             api_mode=result.api_mode,
         )
         _restart_slash_worker(session)
-        _emit("session.info", sid, _session_info(agent))
+        _emit("session.info", sid, _session_info(agent, session=session))
 
     os.environ["HERMES_MODEL"] = result.new_model
     os.environ["HERMES_INFERENCE_MODEL"] = result.new_model
@@ -1424,7 +1424,7 @@ def _current_profile_name() -> str:
         return "default"
 
 
-def _session_info(agent) -> dict:
+def _session_info(agent, session: Optional[dict] = None) -> dict:
     reasoning_config = getattr(agent, "reasoning_config", None)
     reasoning_effort = ""
     if (
@@ -1448,6 +1448,9 @@ def _session_info(agent) -> dict:
         "usage": _get_usage(agent),
         "profile_name": _current_profile_name(),
     }
+    if session:
+        key = str(session.get("session_key", ""))
+        info["title"] = _session_live_title(session, key)
     try:
         from hermes_cli import __version__, __release_date__
 
@@ -1909,7 +1912,7 @@ def _apply_personality_to_session(
         with session["history_lock"]:
             session["history"].append({"role": "user", "content": marker})
             session["history_version"] = int(session.get("history_version", 0)) + 1
-        info = _session_info(agent)
+        info = _session_info(agent, session=session)
         _emit("session.info", sid, info)
         return False, info
     return False, None
@@ -2125,7 +2128,7 @@ def _init_session(sid: str, key: str, agent, history: list, cols: int = 80):
     _wire_callbacks(sid)
     _sessions[sid]["_notif_stop"] = _start_notification_poller(sid, _sessions[sid])
     _notify_session_boundary("on_session_reset", key)
-    _emit("session.info", sid, _session_info(agent))
+    _emit("session.info", sid, _session_info(agent, session=_sessions[sid]))
 
 
 def _new_session_key() -> str:
@@ -2496,7 +2499,7 @@ def _(rid, params: dict) -> dict:
             "resumed": target,
             "message_count": len(messages),
             "messages": messages,
-            "info": _session_info(agent),
+            "info": _session_info(agent, session=_sessions.get(sid)),
         },
     )
 
@@ -2933,7 +2936,7 @@ def _(rid, params: dict) -> dict:
             summary = summarize_manual_compression(
                 before_messages, messages, before_tokens, after_tokens
             )
-            info = _session_info(agent)
+            info = _session_info(agent, session=session)
             _emit("session.info", sid, info)
             return _ok(
                 rid,
