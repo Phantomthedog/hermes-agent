@@ -376,6 +376,7 @@ export function StatusRule({
   modelFast,
   modelReasoningEffort,
   indicatorStyle = 'kaomoji',
+  titleLabel,
   usage,
   bgCount,
   liveSessionCount,
@@ -475,6 +476,12 @@ export function StatusRule({
             {' │ '}
             {modelText}
           </Text>
+          {titleLabel ? (
+            <Text color={t.color.muted} wrap="truncate-end">
+              {' │ '}
+              <Text color={t.color.label}>{titleLabel}</Text>
+            </Text>
+          ) : null}
           {ctxLabel ? (
             <Text color={t.color.muted} wrap="truncate-end">
               {' │ '}
@@ -654,6 +661,7 @@ interface StatusRuleProps {
   modelFast?: boolean
   modelReasoningEffort?: string
   indicatorStyle?: IndicatorStyle
+  titleLabel?: string
   sessionStartedAt?: null | number
   showCost: boolean
   status: string

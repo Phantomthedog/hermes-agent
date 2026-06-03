@@ -291,6 +291,16 @@ def main():
                 _log_exit(f"response write failed for method={method!r} (broken stdout pipe)")
                 sys.exit(0)
 
+    # TUI sent Ctrl+D / closed stdin. Before exiting, fire on_session_finalize
+    # for any active sessions so the registered shell hooks (e.g.
+    # auto-session-checkpoint.sh) get a chance to flush. Without this, hooks
+    # only fire on /new, /reset, GC, or gateway stop — leaving Ctrl+D-quit
+    # sessions invisible to the checkpoint pipeline.
+    try:
+        server._shutdown_sessions()
+    except Exception as _e:
+        logger.warning("session shutdown on EOF failed: %s", _e)
+
     _log_exit("stdin EOF (TUI closed the command pipe)")
 
 
