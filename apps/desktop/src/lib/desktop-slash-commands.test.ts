@@ -105,4 +105,28 @@ describe('desktop slash command curation', () => {
     expect(desktopSlashUnavailableMessage('/skills')).toContain('desktop sidebar')
     expect(desktopSlashUnavailableMessage('/clear')).toContain('terminal interface')
   })
+
+  it('allows skill commands like /plan or /xhs-image to pass through isDesktopSlashCommand', () => {
+    // Skill commands not in DESKTOP_COMMANDS, DESKTOP_ALIASES, or BLOCKED_COMMANDS
+    expect(isDesktopSlashCommand('/plan')).toBe(true)
+    expect(isDesktopSlashCommand('/xhs-image')).toBe(true)
+    expect(isDesktopSlashCommand('/hermes-agent-dev')).toBe(true)
+    expect(isDesktopSlashCommand('/writing-plans')).toBe(true)
+  })
+
+  it('does not suggest skill commands in the slash palette', () => {
+    // Skill commands are executable but not suggested
+    expect(isDesktopSlashSuggestion('/plan')).toBe(false)
+    expect(isDesktopSlashSuggestion('/xhs-image')).toBe(false)
+    expect(isDesktopSlashSuggestion('/hermes-agent-dev')).toBe(false)
+  })
+
+  it('still blocks known desktop-unavailable commands for skill commands that shadow a block', () => {
+    // If a skill happened to share a name with a blocked command,
+    // blocked-list precedence should win
+    expect(isDesktopSlashCommand('/model')).toBe(false)
+    expect(isDesktopSlashCommand('/skills')).toBe(false)
+    expect(isDesktopSlashCommand('/clear')).toBe(false)
+    expect(isDesktopSlashCommand('/quit')).toBe(false)
+  })
 })

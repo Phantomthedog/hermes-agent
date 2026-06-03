@@ -39,11 +39,20 @@ export interface SkillCommandDispatchResponse {
   type: 'skill'
   name: string
   message?: string
+  notice?: string
 }
 
 export interface SendCommandDispatchResponse {
   type: 'send'
   message: string
+  notice?: string
+}
+
+export interface PrefillCommandDispatchResponse {
+  type: 'prefill'
+  /** Message text to place in the composer for editing (not submitted). */
+  message: string
+  notice?: string
 }
 
 export type CommandDispatchResponse =
@@ -51,6 +60,7 @@ export type CommandDispatchResponse =
   | AliasCommandDispatchResponse
   | SkillCommandDispatchResponse
   | SendCommandDispatchResponse
+  | PrefillCommandDispatchResponse
 
 export type SidebarNavId = 'artifacts' | 'command-center' | 'messaging' | 'new-session' | 'settings' | 'skills'
 

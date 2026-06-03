@@ -24,6 +24,7 @@ import {
   addComposerAttachment,
   clearComposerAttachments,
   type ComposerAttachment,
+  setComposerDraft,
   terminalContextBlocksFromDraft
 } from '@/store/composer'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
@@ -486,27 +487,55 @@ export function usePromptActions({
             return
           }
 
-          const message = ('message' in dispatch ? dispatch.message : '')?.trim() ?? ''
-
-          if (!message) {
-            renderSlashOutput(
-              `/${name}: ${dispatch.type === 'skill' ? 'skill payload missing message' : 'empty message'}`
-            )
-
-            return
-          }
-
           if (dispatch.type === 'skill') {
             renderSlashOutput(`⚡ loading skill: ${dispatch.name}`)
-          }
 
-          if (busyRef.current) {
-            renderSlashOutput('session busy — /interrupt the current turn before sending this command')
+            const message = (dispatch.message ?? '').trim()
+
+            if (!message) {
+              renderSlashOutput(`/${name}: skill payload missing message`)
+
+              return
+            }
+
+            if (busyRef.current) {
+              renderSlashOutput('session busy — /interrupt the current turn before sending this command')
+
+              return
+            }
+
+            await submitPromptText(message)
 
             return
           }
 
-          await submitPromptText(message)
+          if (dispatch.type === 'send') {
+            if (dispatch.notice?.trim()) {
+              renderSlashOutput(dispatch.notice)
+            }
+
+            if (busyRef.current) {
+              renderSlashOutput('session busy — /interrupt the current turn before sending this command')
+
+              return
+            }
+
+            await submitPromptText(dispatch.message)
+
+            return
+          }
+
+          if (dispatch.type === 'prefill') {
+            if (dispatch.notice?.trim()) {
+              renderSlashOutput(dispatch.notice)
+            }
+
+            setComposerDraft(dispatch.message)
+
+            return
+          }
+
+          renderSlashOutput(`error: unknown dispatch type`)
         } catch (err) {
           renderSlashOutput(`error: ${err instanceof Error ? err.message : String(err)}`)
         }
