@@ -148,6 +148,10 @@ async def handle_ws(ws: Any) -> None:
 
         transport = WSTransport(ws, asyncio.get_running_loop(), peer=peer)
 
+        # Start the idle session sweeper.  Idempotent — only one sweeper
+        # per process, regardless of how many WS connections share it.
+        server._start_gateway_idle_sweeper()
+
         ready_ok = await transport.write_async(
             {
                 "jsonrpc": "2.0",

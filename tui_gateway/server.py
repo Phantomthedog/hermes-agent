@@ -337,6 +337,119 @@ def _shutdown_sessions() -> None:
 atexit.register(_shutdown_sessions)
 
 
+# ── Idle Session Sweeper ──────────────────────────────────────────────
+
+IDLE_FINALIZE_TIMEOUT = 600  # 10 minutes — fire on_session_finalize for truly idle sessions
+
+
+def _is_session_truly_idle(session: dict, now: float) -> bool:
+    """Check if a session is eligible for idle finalization.
+
+    A session is truly idle when:
+    - It has not already been finalized
+    - Its idle age (now - last_active) >= threshold
+    - It has no active LLM turn (running)
+    - It has no active assistant stream (inflight_turn.streaming)
+    - It has no pending tool calls (tool_started_at is non-empty)
+    - It has no active background processes
+    """
+    if session.get("_finalized"):
+        return False
+
+    last_active = session.get("last_active") or session.get("created_at")
+    if last_active is None:
+        return False
+
+    idle_age = now - last_active
+    if idle_age < IDLE_FINALIZE_TIMEOUT:
+        return False
+
+    if session.get("running"):
+        return False
+
+    inflight = session.get("inflight_turn")
+    if isinstance(inflight, dict) and inflight.get("streaming"):
+        return False
+
+    if session.get("tool_started_at"):
+        return False
+
+    # Check active background processes for this session
+    try:
+        from tools.process_registry import process_registry
+
+        session_key = session.get("session_key", "")
+        if session_key and process_registry.has_active_for_session(session_key):
+            return False
+    except Exception:
+        pass
+
+    return True
+
+
+def _idle_sweeper_loop(stop_event: threading.Event) -> None:
+    """Periodically finalize sessions that have been truly idle beyond the timeout."""
+    while True:
+        now = time.time()
+        for session in list(_sessions.values()):
+            if _is_session_truly_idle(session, now):
+                session_key = session.get("session_key", "")
+                last_active = session.get("last_active") or session.get("created_at", now)
+                logger.info(
+                    "Finalizing idle session %s (idle %.0fs >= %ds threshold)",
+                    session_key,
+                    now - last_active,
+                    IDLE_FINALIZE_TIMEOUT,
+                )
+                _finalize_session(session, end_reason="idle_timeout")
+        # Sweep interval: 60 seconds between full scans.
+        # Returns True when the event is set (shutdown signal).
+        if stop_event.wait(60.0):
+            break
+
+
+def _start_idle_sweeper() -> threading.Event:
+    """Start the idle session sweeper daemon thread.
+
+    Returns the stop event so shutdown can halt the sweeper cleanly.
+    """
+    stop_event = threading.Event()
+    t = threading.Thread(
+        target=_idle_sweeper_loop,
+        args=(stop_event,),
+        name="tui-idle-sweeper",
+        daemon=True,
+    )
+    t.start()
+    return stop_event
+
+
+# Gateways call these to bind the sweeper to the process lifecycle.
+# _start_gateway_idle_sweeper is idempotent: only one sweeper per process.
+_gateway_idle_sweeper_stop: threading.Event | None = None
+
+
+def _start_gateway_idle_sweeper() -> None:
+    """Start the idle session sweeper when the gateway starts.
+
+    Idempotent — subsequent calls are no-ops if the sweeper is already
+    running.  Call from entry.py:main() and ws.py:handle_ws().
+    """
+    global _gateway_idle_sweeper_stop
+    if _gateway_idle_sweeper_stop is not None:
+        return
+    _gateway_idle_sweeper_stop = _start_idle_sweeper()
+
+
+def _stop_gateway_idle_sweeper() -> None:
+    """Signal the sweeper to exit.  Idempotent, safe to call when not started."""
+    global _gateway_idle_sweeper_stop
+    if _gateway_idle_sweeper_stop is None:
+        return
+    _gateway_idle_sweeper_stop.set()
+    _gateway_idle_sweeper_stop = None
+
+
 # ── Plumbing ──────────────────────────────────────────────────────────
 
 
@@ -1776,6 +1889,7 @@ def _tool_summary(name: str, result: str, duration_s: float | None) -> str | Non
 def _on_tool_start(sid: str, tool_call_id: str, name: str, args: dict):
     session = _sessions.get(sid)
     if session is not None:
+        session["last_active"] = time.time()
         try:
             from agent.display import capture_local_edit_snapshot
 
@@ -1806,6 +1920,7 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
     snapshot = None
     started_at = None
     if session is not None:
+        session["last_active"] = time.time()
         snapshot = session.setdefault("edit_snapshots", {}).pop(tool_call_id, None)
         started_at = session.setdefault("tool_started_at", {}).pop(tool_call_id, None)
     duration_s = time.time() - started_at if started_at else None
@@ -3124,9 +3239,15 @@ def _(rid, params: dict) -> dict:
     session, err = _sess_nowait({"session_id": sid}, rid)
     if err:
         return err
+    assert session is not None  # _sess_nowait guarantees this when err is None
 
     with session["history_lock"]:
         session["last_active"] = time.time()
+        # If this session was previously finalized by the idle sweeper, clear the
+        # flag so it can be finalized again after another period of inactivity.
+        # This allows Desktop users to switch back to an idle-finalized session
+        # and keep working, with hooks still firing on subsequent idle timeouts.
+        session.pop("_finalized", None)
         history = list(session.get("display_history") or session.get("history") or [])
         inflight = _inflight_snapshot(session)
         running = bool(session.get("running"))
@@ -3900,6 +4021,9 @@ def _(rid, params: dict) -> dict:
                     print(f"[tui_gateway] prompt.submit: replace_messages failed: {exc}", file=sys.stderr)
         session["running"] = True
         session["last_active"] = time.time()
+        # User is sending a message — clear any idle-finalization flag so the
+        # session can be finalized again after the next idle period.
+        session.pop("_finalized", None)
         _start_inflight_turn(session, text)
 
     # Persist the DB row lazily, now that the user has actually sent a message.
@@ -4003,6 +4127,7 @@ def _notification_poller_loop(
             if session.get("running"):
                 process_registry.completion_queue.put(evt)
                 continue
+            session["last_active"] = time.time()
             session["running"] = True
 
         rid = f"__notif__{int(time.time() * 1000)}"
@@ -4195,6 +4320,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             def _stream(delta):
                 with session["history_lock"]:
                     _append_inflight_delta(session, delta)
+                    session["last_active"] = time.time()
                 payload = {"text": delta}
                 if streamer and (r := streamer.feed(delta)) is not None:
                     payload["rendered"] = r

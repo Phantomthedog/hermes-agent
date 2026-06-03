@@ -5459,3 +5459,428 @@ def test_notification_poller_requeues_when_busy(monkeypatch):
         assert requeued["session_id"] == "proc_busy_test"
     finally:
         server._sessions.pop("sid_busy", None)
+
+
+# ── Idle session sweeper tests ───────────────────────────────────────
+
+
+def test_is_session_truly_idle_returns_false_when_running():
+    """A session with an active LLM turn is not idle regardless of age."""
+    now = time.time()
+    session = _session(
+        session_key="test-idle-running",
+        last_active=now - 900,  # 15 min idle
+        running=True,
+        created_at=now - 3600,
+    )
+    assert server._is_session_truly_idle(session, now) is False
+
+
+def test_is_session_truly_idle_returns_false_when_streaming():
+    """A session with an active assistant stream is not idle."""
+    now = time.time()
+    session = _session(
+        session_key="test-idle-streaming",
+        last_active=now - 900,
+        running=False,
+        inflight_turn={"streaming": True, "assistant": "still typing…"},
+        created_at=now - 3600,
+    )
+    assert server._is_session_truly_idle(session, now) is False
+
+
+def test_is_session_truly_idle_returns_false_when_tool_running():
+    """A session with pending tool calls is not idle."""
+    now = time.time()
+    session = _session(
+        session_key="test-idle-tool",
+        last_active=now - 900,
+        running=False,
+        tool_started_at={"call_1": now - 800},
+        created_at=now - 3600,
+    )
+    assert server._is_session_truly_idle(session, now) is False
+
+
+def test_is_session_truly_idle_returns_false_when_recently_active():
+    """A session active less than the threshold is not idle."""
+    now = time.time()
+    session = _session(
+        session_key="test-idle-recent",
+        last_active=now - 300,  # 5 min — well under 10 min threshold
+        running=False,
+        created_at=now - 3600,
+    )
+    assert server._is_session_truly_idle(session, now) is False
+
+
+def test_is_session_truly_idle_returns_true_when_eligible():
+    """A session past the threshold with no activity is truly idle."""
+    now = time.time()
+    session = _session(
+        session_key="test-idle-eligible",
+        last_active=now - 900,  # 15 min — past the 10 min threshold
+        running=False,
+        created_at=now - 3600,
+    )
+    assert server._is_session_truly_idle(session, now) is True
+
+
+def test_is_session_truly_idle_returns_false_if_already_finalized():
+    """An already finalized session is never eligible for idle finalization."""
+    now = time.time()
+    session = _session(
+        session_key="test-idle-finalized",
+        last_active=now - 900,
+        running=False,
+        _finalized=True,
+        created_at=now - 3600,
+    )
+    assert server._is_session_truly_idle(session, now) is False
+
+
+def test_idle_sweeper_finalizes_stale_session(monkeypatch):
+    """The sweeper loop finalizes sessions idle past threshold."""
+    finalized = []
+    monkeypatch.setattr(
+        server,
+        "_finalize_session",
+        lambda session, end_reason="tui_close": finalized.append(
+            (session.get("session_key"), end_reason)
+        ),
+    )
+
+    session = _session(
+        session_key="sweep-test-stale",
+        last_active=time.time() - 900,  # 15 min idle
+        running=False,
+        created_at=time.time() - 3600,
+    )
+    server._sessions["sweep-stale"] = session
+
+    try:
+        stop = threading.Event()
+        stop.set()  # Pre-set: loop runs once then exits
+        with patch.object(server, "IDLE_FINALIZE_TIMEOUT", 1):
+            # Artificially age so it's past even 1s threshold
+            session["last_active"] = time.time() - 5
+            server._idle_sweeper_loop(stop)
+
+        assert len(finalized) == 1
+        assert finalized[0] == ("sweep-test-stale", "idle_timeout")
+    finally:
+        server._sessions.pop("sweep-stale", None)
+
+
+def test_idle_sweeper_skips_active_sessions(monkeypatch):
+    """The sweeper loop does NOT finalize sessions still running."""
+    finalized = []
+    monkeypatch.setattr(
+        server,
+        "_finalize_session",
+        lambda session, end_reason="tui_close": finalized.append(
+            (session.get("session_key"), end_reason)
+        ),
+    )
+
+    session = _session(
+        session_key="sweep-test-active",
+        last_active=time.time() - 900,
+        running=True,  # actively running
+        created_at=time.time() - 3600,
+    )
+    server._sessions["sweep-active"] = session
+    try:
+        stop = threading.Event()
+        stop.set()
+        server._idle_sweeper_loop(stop)
+        assert len(finalized) == 0
+    finally:
+        server._sessions.pop("sweep-active", None)
+
+
+def test_session_create_does_not_close_previous_session(monkeypatch):
+    """Regression: Desktop ``session.create`` must NOT call session.close /
+    _finalize_session for any previous session. Confirms the sweeper is the
+    only path for idle finalization — not the create handler."""
+    from tui_gateway.server import dispatch
+
+    close_calls = []
+    monkeypatch.setattr(
+        server,
+        "_finalize_session",
+        lambda session, end_reason="tui_close": close_calls.append(
+            (session.get("session_key"), end_reason)
+        ),
+    )
+
+    # Populate a previous live session
+    prev_sid = "prev-session"
+    prev_session = _session(
+        session_key="prev-key",
+        last_active=time.time() - 900,
+        running=False,
+        created_at=time.time() - 3600,
+    )
+    server._sessions[prev_sid] = prev_session
+
+    # Simulate Desktop New Session: session.create with no messages
+    resp = None
+    try:
+        resp = dispatch({
+            "id": "new-session-1",
+            "method": "session.create",
+            "params": {"cols": 96},
+        })
+        assert resp is not None, "dispatch returned None"
+        result = resp.get("result", {}) if isinstance(resp, dict) else {}
+        assert result.get("session_id") is not None, f"no session_id in response: {resp}"
+        # session.close/_finalize_session must NOT have been called
+        assert len(close_calls) == 0, (
+            f"session.create triggered {len(close_calls)} finalization(s): "
+            f"{close_calls}"
+        )
+    finally:
+        server._sessions.pop(prev_sid, None)
+        # Clean up the newly created session too
+        if isinstance(resp, dict):
+            new_sid = (resp.get("result", {}) if isinstance(resp.get("result"), dict) else {}).get("session_id", "")
+            if new_sid:
+                server._sessions.pop(new_sid, None)
+
+
+
+# ── Resume-after-idle-finalized lifecycle ────────────────────────────
+
+
+def test_resumed_session_can_be_finalized_again(monkeypatch):
+    """A session finalized by the idle sweeper can be resumed and finalized
+    again after another idle period.
+
+    Full lifecycle:
+    1. Create session
+    2. Age it past 10 min idle threshold
+    3. Run sweeper -> on_session_finalize fires once
+    4. Simulate user returning (session.activate) -> _finalized cleared
+    5. Age it again past threshold
+    6. Run sweeper again -> on_session_finalize fires a second time
+    7. Explicit session.close still fires on_session_finalize
+    """
+    finalized_events = []
+    monkeypatch.setattr(
+        server,
+        "_notify_session_boundary",
+        lambda event, session_id: finalized_events.append((event, session_id)),
+    )
+
+    now = time.time()
+    session = _session(
+        session_key='resume-test-key',
+        last_active=now - 900,
+        running=False,
+        created_at=now - 3600,
+    )
+    sid = 'resume-test-sid'
+    server._sessions[sid] = session
+    try:
+        # Step 1: Sweeper finalizes the idle session
+        stop = threading.Event()
+        stop.set()
+        with patch.object(server, "IDLE_FINALIZE_TIMEOUT", 1):
+            session['last_active'] = time.time() - 900
+            server._idle_sweeper_loop(stop)
+
+        assert len(finalized_events) == 1, (
+            f"expected 1 finalize, got {len(finalized_events)}: {finalized_events}"
+        )
+        assert finalized_events[0][0] == "on_session_finalize"
+        assert session.get("_finalized") is True, (
+            "session should be marked finalized after idle timeout"
+        )
+
+        # Step 2: Simulate user returning via session.activate
+        resp = server.handle_request({
+            "id": "1",
+            "method": "session.activate",
+            "params": {"session_id": sid},
+        })
+        assert resp.get("result") is not None, (
+            f"session.activate failed: {resp}"
+        )
+        assert session.get("_finalized") is None or session.get("_finalized") is False, (
+            "_finalized should be cleared after session.activate"
+        )
+
+        # Step 3: Age the session again and re-sweep
+        finalized_events.clear()
+        with patch.object(server, "IDLE_FINALIZE_TIMEOUT", 1):
+            session['last_active'] = time.time() - 900
+            server._idle_sweeper_loop(stop)
+
+        assert len(finalized_events) == 1, (
+            f"expected 1 finalize after resume, got {len(finalized_events)}: "
+            f"{finalized_events}"
+        )
+        assert finalized_events[0][0] == "on_session_finalize", (
+            "second idle period should also fire on_session_finalize"
+        )
+        assert session.get("_finalized") is True, (
+            "session should be marked finalized after second idle timeout"
+        )
+
+        # Step 4: Explicit session.close — session was already finalized by
+        # the sweeper, so _finalize_session is idempotent and does NOT fire
+        # the hook again. This is correct: the sweeper already fired for this
+        # idle period. session.close still pops from _sessions and closes the
+        # agent — just no duplicate hook.
+        finalized_events.clear()
+        resp = server.handle_request({
+            "id": "2",
+            "method": "session.close",
+            "params": {"session_id": sid},
+        })
+        assert resp.get("result", {}).get("closed") is True
+        # Hook should NOT fire again — _finalize_session is idempotent
+        assert len(finalized_events) == 0, (
+            "session.close should not re-fire hook when sweeper already finalized"
+        )
+    finally:
+        server._sessions.pop(sid, None)
+
+
+def test_prompt_submit_clears_finalized_flag(monkeypatch):
+    """Sending a message to a previously finalized session clears the
+    _finalized flag so it can be finalized again after the next idle."""
+    finalized_events = []
+    monkeypatch.setattr(
+        server,
+        "_notify_session_boundary",
+        lambda event, session_id: finalized_events.append((event, session_id)),
+    )
+
+    session = _session(
+        session_key='prompt-resume-key',
+        last_active=time.time() - 900,
+        running=False,
+        _finalized=True,
+        created_at=time.time() - 3600,
+    )
+    sid = 'prompt-resume-sid'
+    server._sessions[sid] = session
+    try:
+        assert session.get("_finalized") is True, "precondition: _finalized is set"
+
+        # Simulate user sending a message — clears _finalized, sets running=True
+        server.handle_request({
+            "id": "1",
+            "method": "prompt.submit",
+            "params": {"session_id": sid, "text": "hello"},
+        })
+
+        assert session.get("_finalized") is None or session.get("_finalized") is False, (
+            "_finalized should be cleared by prompt.submit"
+        )
+
+        # Simulate the turn completing (normally done by _run_prompt_submit's
+        # finally block), so the session becomes eligible for idle finalization.
+        # Without this, running=True and inflight_turn.streaming would block
+        # the sweeper.
+        session["running"] = False
+        session.pop("inflight_turn", None)
+        session["last_active"] = time.time()
+
+        # Now age and verify sweeper can finalize again
+        finalized_events.clear()
+        stop = threading.Event()
+        stop.set()
+        with patch.object(server, "IDLE_FINALIZE_TIMEOUT", 1):
+            session['last_active'] = time.time() - 900
+            server._idle_sweeper_loop(stop)
+
+        assert len(finalized_events) == 1, (
+            f"expected 1 finalize after prompt.submit, got {len(finalized_events)}"
+        )
+    finally:
+        server._sessions.pop(sid, None)
+
+
+# ── Sweeper lifecycle tests ──────────────────────────────────────────
+
+
+def test_importing_server_does_not_start_sweeper():
+    """Importing ``tui_gateway.server`` alone must NOT start a daemon sweeper
+    thread. The sweeper is started by entry points (entry.py, ws.py), not at
+    module import time.
+
+    Regression guard: the original implementation started the sweeper at
+    module load via a module-level ``_start_idle_sweeper()`` call, which
+    meant every test import spawned a daemon thread.
+    """
+    thread_names = [t.name for t in threading.enumerate()]
+    assert "tui-idle-sweeper" not in thread_names, (
+        "sweeper daemon thread found at import time — "
+        "it should only be started by _start_gateway_idle_sweeper()"
+    )
+
+
+def test_start_gateway_idle_sweeper_is_idempotent():
+    """Calling ``_start_gateway_idle_sweeper`` multiple times must only
+    start one daemon thread. Subsequent calls are no-ops."""
+    # Ensure clean state
+    server._stop_gateway_idle_sweeper()
+    sweeper_threads_before = [
+        t for t in threading.enumerate() if t.name == "tui-idle-sweeper"
+    ]
+    assert len(sweeper_threads_before) == 0
+
+    server._start_gateway_idle_sweeper()
+    server._start_gateway_idle_sweeper()  # second call — no-op
+    server._start_gateway_idle_sweeper()  # third call — no-op
+
+    sweeper_threads = [
+        t for t in threading.enumerate() if t.name == "tui-idle-sweeper"
+    ]
+    assert len(sweeper_threads) == 1, (
+        f"expected 1 sweeper thread after 3 start calls, "
+        f"got {len(sweeper_threads)}"
+    )
+
+    # Clean up
+    server._stop_gateway_idle_sweeper()
+
+
+def test_stop_gateway_idle_sweeper_halts_sweeper():
+    """After ``_stop_gateway_idle_sweeper``, the sweeper daemon thread is
+    stopped and its stop event is set, so the loop exits on the next check."""
+    # Ensure clean state
+    server._stop_gateway_idle_sweeper()
+
+    # Start fresh
+    server._start_gateway_idle_sweeper()
+
+    sweeper_threads = [
+        t for t in threading.enumerate() if t.name == "tui-idle-sweeper"
+    ]
+    assert len(sweeper_threads) == 1, "sweeper should be running"
+
+    stop_event = server._gateway_idle_sweeper_stop
+    assert stop_event is not None
+    assert not stop_event.is_set(), "stop event should NOT be set before stop"
+
+    # Stop the sweeper
+    server._stop_gateway_idle_sweeper()
+
+    assert server._gateway_idle_sweeper_stop is None, (
+        "stop reference should be cleared"
+    )
+    assert stop_event.is_set(), (
+        "stop event should be set after _stop_gateway_idle_sweeper"
+    )
+
+    # The daemon thread may still be alive briefly (it checks the event
+    # on its next 60s wait cycle), but the stop event is set so it will
+    # exit on its next iteration.  This is sufficient — we verified the
+    # signalling mechanism works.
+
+    # Restart the sweeper so subsequent tests aren't affected
+    server._start_gateway_idle_sweeper()

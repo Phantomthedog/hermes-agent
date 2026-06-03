@@ -263,6 +263,11 @@ def main():
         global _mcp_discovery_thread
         _mcp_discovery_thread = _mcp_thread
 
+    # Start the idle session sweeper before accepting requests.  This must
+    # happen here, not at module import time, so importing tui_gateway.server
+    # alone (e.g. in tests) does not spawn a background daemon thread.
+    server._start_gateway_idle_sweeper()
+
     if not write_json({
         "jsonrpc": "2.0",
         "method": "event",
@@ -300,6 +305,9 @@ def main():
         server._shutdown_sessions()
     except Exception as _e:
         logger.warning("session shutdown on EOF failed: %s", _e)
+
+    # Stop the idle session sweeper — the process is shutting down.
+    server._stop_gateway_idle_sweeper()
 
     _log_exit("stdin EOF (TUI closed the command pipe)")
 
