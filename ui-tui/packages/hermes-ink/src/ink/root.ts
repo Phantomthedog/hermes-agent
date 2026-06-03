@@ -102,6 +102,30 @@ export const forceRedraw = (stdout: NodeJS.WriteStream = process.stdout): boolea
 }
 
 /**
+ * Lighter than forceRedraw — marks the previous frame as contaminated so the
+ * NEXT render performs a full-damage diff instead of the per-node fast path.
+ * Works without clearing the screen or triggering an extra write.
+ *
+ * Call this after a paste, large input mutation, or any operation where Ink's
+ * incremental diff may have missed stale cells (e.g. wrapped text that changed
+ * by multiple visual rows, causing ghost characters in the terminal buffer).
+ *
+ * The contaminated flag is reset by onRender at the end of the next frame, so
+ * the effect is one-shot — subsequent renders return to the optimized diff.
+ */
+export const invalidatePrevFrame = (stdout: NodeJS.WriteStream = process.stdout): boolean => {
+  const instance = instances.get(stdout)
+
+  if (!instance) {
+    return false
+  }
+
+  instance.invalidatePrevFrame()
+
+  return true
+}
+
+/**
  * Mount a component and render the output.
  */
 export const renderSync = (node: ReactNode, options?: NodeJS.WriteStream | RenderOptions): Instance => {
