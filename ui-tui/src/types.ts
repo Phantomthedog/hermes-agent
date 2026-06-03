@@ -160,6 +160,7 @@ export interface SessionInfo {
   update_command?: string
   usage?: Usage
   version?: string
+  title?: string
 }
 
 export interface Usage {
