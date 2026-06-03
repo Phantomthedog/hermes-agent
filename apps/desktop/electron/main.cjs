@@ -65,6 +65,22 @@ if (USER_DATA_OVERRIDE) {
   app.setPath('userData', resolvedUserData)
 }
 
+// ── Local patch: UI scale factor via env var ──────────────────────────
+// HERMES_DESKTOP_SCALE or HERMES_DESKTOP_SCALE_FACTOR overrides Chromium's
+// device scale factor (0.5–4.0). Useful for HiDPI / 4K screens where the
+// default UI is too small. Must run before app.whenReady().
+const _hermesScaleRaw = process.env.HERMES_DESKTOP_SCALE || process.env.HERMES_DESKTOP_SCALE_FACTOR
+if (_hermesScaleRaw) {
+  const _parsed = parseFloat(_hermesScaleRaw)
+  if (Number.isFinite(_parsed) && _parsed >= 0.5 && _parsed <= 4) {
+    app.commandLine.appendSwitch('high-dpi-support', '1')
+    app.commandLine.appendSwitch('force-device-scale-factor', String(_parsed))
+    console.log(`[hermes] desktop scale factor: ${_parsed}`)
+  } else {
+    console.warn(`[hermes] ignoring invalid HERMES_DESKTOP_SCALE value: ${_hermesScaleRaw} (must be 0.5–4)`)
+  }
+}
+
 const PORT_FLOOR = 9120
 const PORT_CEILING = 9199
 const DEV_SERVER = process.env.HERMES_DESKTOP_DEV_SERVER
