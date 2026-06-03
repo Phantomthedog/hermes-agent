@@ -271,12 +271,13 @@ const HEADING_SIZES: Record<'h1' | 'h2' | 'h3' | 'h4', string> = {
 const MarkdownTextImpl = () => {
   const isStreaming = useAuiState(s => s.message.status?.type === 'running')
 
-  // Stable per-state plugin object. The previous inline `{ math: mathPlugin,
-  // ...(isStreaming ? {} : { code }) }` created a new object identity on every
-  // render, which churns Streamdown's outer memo + propagates new prop
-  // identities into every Block. The plugin set really only varies on
-  // `isStreaming`, so memoize on that.
-  const plugins = useMemo(() => (isStreaming ? { math: mathPlugin } : { math: mathPlugin, code }), [isStreaming])
+  // Always include the `code` plugin regardless of streaming state, so
+  // code-block chrome (headers, copy buttons) is present from the first
+  // render. Previously `code` was only activated after streaming ended,
+  // which caused a layout shift when the entire code block structure
+  // (CodeCard header + body) materialised mid-conversation — triggering
+  // the ResizeObserver pin mechanism and fighting the virtualizer.
+  const plugins = useMemo(() => ({ math: mathPlugin, code }), [])
 
   const components = useMemo(
     () =>
@@ -367,9 +368,10 @@ const MarkdownTextImpl = () => {
         // `$` (very common: shell snippets, JS template strings, dollar
         // amounts) leaks those dollars out to the math parser and they
         // get rendered as broken inline math until the closing fence
-        // arrives. Shiki is independently deferred via `defer={isStreaming}`
-        // on the SyntaxHighlighter component, so we don't pay code-block
-        // tokenization on every token even with this set.
+        // syntax highlighting. Shiki is independently deferred via `defer={isStreaming}`
+        // on the SyntaxHighlighter component (uses a 120 ms delay during streaming
+        // to avoid re-tokenizing on every token, and 0 ms delay once streaming ends),
+        // so we don't pay code-block tokenization on every token even with this set.
         parseIncompleteMarkdown
         plugins={plugins}
         preprocess={preprocessMarkdown}
