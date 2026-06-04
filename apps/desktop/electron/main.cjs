@@ -110,6 +110,14 @@ if (REMOTE_DISPLAY_REASON) {
     `[hermes] remote display detected (${REMOTE_DISPLAY_REASON}); disabling GPU hardware acceleration to prevent flicker`
   )
 }
+
+// UI zoom — HERMES_DESKTOP_SCALE overrides the device pixel ratio so the
+// desktop UI renders at a readable size on high-DPI or large displays.
+// Accepts values like 1.0, 1.5, 2.5.  Set by hermes-desktop-big-coder.
+const DESKTOP_SCALE = process.env.HERMES_DESKTOP_SCALE
+if (DESKTOP_SCALE) {
+  app.commandLine.appendSwitch('force-device-scale-factor', DESKTOP_SCALE)
+}
 const SOURCE_REPO_ROOT = path.resolve(APP_ROOT, '../..')
 
 // Build-time install stamp -- the git ref this .exe was built against.
@@ -3578,6 +3586,79 @@ function createWindow() {
     const src = details ? details.sourceUrl : sourceId
     const lineNo = details ? details.lineNumber : line
     rememberLog(`[renderer console] ${text} (${src}:${lineNo})`)
+  })
+
+  // ── Whisper Dictate bridge (Right Ctrl) ──────────────────
+  // Hermes Desktop detects Right Ctrl internally via
+  // before-input-event and calls the tray app's control API.
+  let rightCtrlDown = false
+
+  // Cache the control URL so we don't probe every keypress.
+  let dictationControlUrl = null
+
+  function getDictationControlUrl() {
+    if (dictationControlUrl) return dictationControlUrl
+
+    // Try localhost:10011 first (Windows tray app on same host).
+    const baseUrl = 'http://127.0.0.1:10011'
+
+    // If Hermes is running inside WSLg, the Windows host is at
+    // the gateway IP (/etc/resolv.conf nameserver) and the tray
+    // app binds to the Windows loopback.
+    if (isWslEnvironment()) {
+      try {
+        const resolv = fs.readFileSync('/etc/resolv.conf', 'utf-8')
+        const match = resolv.match(/^nameserver\s+(\S+)/m)
+        if (match) {
+          const wslGateway = match[1].trim()
+          dictationControlUrl = `http://${wslGateway}:10011`
+          return dictationControlUrl
+        }
+      } catch (_) {
+        // fall through to localhost
+      }
+    }
+
+    dictationControlUrl = baseUrl
+    return dictationControlUrl
+  }
+
+  function sendDictateRequest(action) {
+    const url = `${getDictationControlUrl()}/${action}`
+    rememberLog(`[HERMES_DICTATE] control request POST ${url}`)
+
+    const req = http.request(url, { method: 'POST', timeout: 3000 }, res => {
+      let body = ''
+      res.on('data', chunk => { body += chunk })
+      res.on('end', () => {
+        rememberLog(`[HERMES_DICTATE] control response ${res.statusCode}: ${body}`)
+      })
+    })
+    req.on('error', err => {
+      rememberLog(`[HERMES_DICTATE] control error: ${err.message}`)
+    })
+    req.on('timeout', () => {
+      req.destroy()
+      rememberLog('[HERMES_DICTATE] control request timed out')
+    })
+    req.end()
+  }
+
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.code !== 'ControlRight') return
+    if (input.isAutoRepeat) return
+
+    rememberLog(`[HERMES_DICTATE] key event code=${input.code} type=${input.type} autoRepeat=${input.isAutoRepeat}`)
+
+    if (input.type === 'keyDown' && !rightCtrlDown) {
+      rightCtrlDown = true
+      rememberLog('[HERMES_DICTATE] Right Ctrl DOWN → sending start')
+      sendDictateRequest('start')
+    } else if (input.type === 'keyUp' && rightCtrlDown) {
+      rightCtrlDown = false
+      rememberLog('[HERMES_DICTATE] Right Ctrl UP → sending stop')
+      sendDictateRequest('stop')
+    }
   })
 
   if (DEV_SERVER) {
