@@ -37,7 +37,9 @@ function commandText(value: string): string {
   return value.startsWith('/') ? value : `/${value}`
 }
 
-/** Live `/` completions backed by the gateway's `complete.slash` RPC. */
+/** Live `/` completions backed by the gateway's `commands.catalog` +
+ * `complete.slash` RPC. Skills and quick_commands are always sourced from
+ * `commands.catalog` (complete.slash dropped them in PR #38467). */
 export function useSlashCompletions(options: { gateway: HermesGateway | null }): {
   adapter: Unstable_TriggerAdapter
   loading: boolean
@@ -54,28 +56,61 @@ export function useSlashCompletions(options: { gateway: HermesGateway | null }):
       const text = `/${query}`
 
       try {
-        if (!query) {
-          const catalog = filterDesktopCommandsCatalog(await gateway.request<CommandsCatalogLike>('commands.catalog'))
+        // Always fetch the catalog — it is the source of truth for skills and
+        // quick_commands.  For typed queries we also call complete.slash and
+        // merge its results (deduplicated by command text).
+        const catalog = filterDesktopCommandsCatalog(
+          await gateway.request<CommandsCatalogLike>('commands.catalog')
+        )
 
+        if (!query) {
+          // Empty "/" palette: return everything the catalog offers.
           const items = (catalog.pairs ?? []).map(([command, meta]) => ({
             text: command,
             display: command,
             meta
           }))
-
           return { items, query }
         }
 
-        const result = await gateway.request<{ items?: CompletionEntry[] }>('complete.slash', { text })
+        // Typed query: fetch catalog + complete.slash in parallel.
+        const slashResult = gateway
+          .request<{ items?: CompletionEntry[] }>('complete.slash', { text })
+          .catch(() => null)
 
-        const items = (result.items ?? [])
+        // Build items from catalog, filtered client-side by the typed prefix.
+        const q = query.toLowerCase()
+        const catalogItems: CompletionEntry[] = (catalog.pairs ?? [])
+          .filter(
+            ([cmd]) =>
+              cmd.toLowerCase().startsWith(`/${q}`) ||
+              cmd.toLowerCase().slice(1).startsWith(q)
+          )
+          .map(([command, meta]) => ({
+            text: command,
+            display: command,
+            meta: desktopSlashDescription(command, meta)
+          }))
+
+        // Merge complete.slash results, deduplicating by command text.
+        const slashItems: CompletionEntry[] = (
+          (await slashResult)?.items ?? []
+        )
           .filter(item => isDesktopSlashSuggestion(item.text))
           .map(item => ({
             ...item,
             meta: desktopSlashDescription(item.text, textValue(item.meta))
           }))
 
-        return { items, query }
+        const seen = new Set(catalogItems.map(i => i.text.toLowerCase()))
+        for (const item of slashItems) {
+          if (!seen.has(item.text.toLowerCase())) {
+            catalogItems.push(item)
+            seen.add(item.text.toLowerCase())
+          }
+        }
+
+        return { items: catalogItems, query }
       } catch {
         return { items: [], query }
       }

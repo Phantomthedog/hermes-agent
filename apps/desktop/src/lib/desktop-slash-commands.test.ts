@@ -75,6 +75,85 @@ describe('desktop slash command curation', () => {
     expect(filtered.skill_count).toBe(2)
   })
 
+  it('keeps skills in catalog when typed prefix matches', () => {
+    const filtered = filterDesktopCommandsCatalog({
+      categories: [
+        { name: 'Skills', pairs: [['/android-tv-adb', 'Android TV ADB'], ['/cloudflare-dns', 'Cloudflare DNS']] }
+      ],
+      pairs: [
+        ['/android-tv-adb', 'Android TV ADB management'],
+        ['/cloudflare-dns', 'Cloudflare DNS records'],
+        ['/new', 'Start a new session']
+      ],
+      skill_count: 2
+    })
+
+    // Skills are always in the filtered catalog regardless of prefix
+    // (prefix filtering is done client-side in use-slash-completions)
+    expect(filtered.pairs!.find(([cmd]) => cmd === '/android-tv-adb')).toBeDefined()
+    expect(filtered.pairs!.find(([cmd]) => cmd === '/cloudflare-dns')).toBeDefined()
+    expect(filtered.pairs!.find(([cmd]) => cmd === '/new')).toBeDefined()
+  })
+
+  it('client-side prefix matching finds skills by partial name', () => {
+    const catalog = filterDesktopCommandsCatalog({
+      pairs: [
+        ['/android-tv-adb', 'Full lifecycle ADB management'],
+        ['/cloudflare-dns', 'DNS records via Cloudflare'],
+        ['/docker-management', 'Docker containers'],
+        ['/new', 'New chat session'],
+        ['/help', 'Show help']
+      ],
+      skill_count: 3
+    })
+
+    const pairs = catalog.pairs ?? []
+
+    // Simulating what use-slash-completions does for typed query
+    const q = 'and'
+    const matches = pairs.filter(
+      ([cmd]) =>
+        cmd.toLowerCase().startsWith(`/${q}`) ||
+        cmd.toLowerCase().slice(1).startsWith(q)
+    )
+    expect(matches.map(([c]) => c)).toEqual(['/android-tv-adb'])
+
+    const q2 = 'clo'
+    const matches2 = pairs.filter(
+      ([cmd]) =>
+        cmd.toLowerCase().startsWith(`/${q2}`) ||
+        cmd.toLowerCase().slice(1).startsWith(q2)
+    )
+    expect(matches2.map(([c]) => c)).toEqual(['/cloudflare-dns'])
+
+    const q3 = 'doc'
+    const matches3 = pairs.filter(
+      ([cmd]) =>
+        cmd.toLowerCase().startsWith(`/${q3}`) ||
+        cmd.toLowerCase().slice(1).startsWith(q3)
+    )
+    expect(matches3.map(([c]) => c)).toEqual(['/docker-management'])
+  })
+
+  it('client-side prefix matching returns empty for non-matching prefix', () => {
+    const catalog = filterDesktopCommandsCatalog({
+      pairs: [
+        ['/android-tv-adb', 'ADB'],
+        ['/cloudflare-dns', 'DNS']
+      ],
+      skill_count: 2
+    })
+
+    const pairs = catalog.pairs ?? []
+    const q = 'zzz'
+    const matches = pairs.filter(
+      ([cmd]) =>
+        cmd.toLowerCase().startsWith(`/${q}`) ||
+        cmd.toLowerCase().slice(1).startsWith(q)
+    )
+    expect(matches).toEqual([])
+  })
+
   it('uses desktop-specific labels for commands with different UI behavior', () => {
     expect(desktopSlashDescription('/branch', 'Branch the current session')).toBe(
       'Branch the latest message into a new chat'
