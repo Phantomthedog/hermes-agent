@@ -1,6 +1,6 @@
 'use client'
 
-import { TextMessagePartProvider, useAuiState, useMessagePartText } from '@assistant-ui/react'
+import { TextMessagePartProvider, useMessagePartText } from '@assistant-ui/react'
 import {
   type StreamdownTextComponents,
   StreamdownTextPrimitive,
@@ -265,6 +265,11 @@ function DeferStreamingText({ children }: { children: ReactNode }) {
   )
 }
 
+interface MarkdownTextSurfaceProps {
+  containerClassName?: string
+  containerProps?: ComponentProps<'div'>
+}
+
 // Headings shrink to chat scale rather than the prose default (h1≈xl). Kept
 // table-driven so adding/tweaking levels is one row.
 const HEADING_SIZES: Record<'h1' | 'h2' | 'h3' | 'h4', string> = {
@@ -274,15 +279,23 @@ const HEADING_SIZES: Record<'h1' | 'h2' | 'h3' | 'h4', string> = {
   h4: 'text-[0.8125rem]'
 }
 
-const MarkdownTextImpl = () => {
-  const isStreaming = useAuiState(s => s.message.status?.type === 'running')
+const MARKDOWN_CONTAINER_CLASS_NAME = cn(
+  'aui-md prose w-full max-w-none overflow-hidden text-[length:var(--conversation-text-font-size)] leading-(--dt-line-height) text-foreground',
+  'prose-p:leading-(--dt-line-height) prose-li:leading-(--dt-line-height)',
+  'prose-headings:text-foreground prose-strong:text-foreground',
+  'prose-a:break-words prose-p:[overflow-wrap:anywhere]',
+  'prose-li:marker:text-muted-foreground/70',
+  'prose-code:rounded-[0.25rem] prose-code:px-[0.1875rem] prose-code:py-px prose-code:font-mono prose-code:text-[0.9em] prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
+  '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&>*+*]:mt-1'
+)
 
-  // Always include the `code` plugin regardless of streaming state, so
-  // code-block chrome (headers, copy buttons) is present from the first
-  // render. Previously `code` was only activated after streaming ended,
-  // which caused a layout shift when the entire code block structure
-  // (CodeCard header + body) materialised mid-conversation — triggering
-  // the ResizeObserver pin mechanism and fighting the virtualizer.
+function MarkdownTextSurface({ containerClassName, containerProps }: MarkdownTextSurfaceProps) {
+  const { status } = useMessagePartText()
+  const isStreaming = status.type === 'running'
+
+  // Keep code parsing enabled while streaming so incomplete fenced blocks still
+  // render as code cards. The expensive Shiki pass is deferred by
+  // `SyntaxHighlighter` below when `isStreaming` is true.
   const plugins = useMemo(() => ({ math: mathPlugin, code }), [])
 
   const components = useMemo(
@@ -355,33 +368,46 @@ const MarkdownTextImpl = () => {
   )
 
   return (
+    <StreamdownTextPrimitive
+      components={components}
+      containerClassName={cn(MARKDOWN_CONTAINER_CLASS_NAME, containerClassName)}
+      containerProps={containerProps}
+      lineNumbers={false}
+      mode="streaming"
+      // Always auto-close incomplete fences — even during streaming.
+      // Without this, an unclosed ```python ... ``` whose body contains
+      // `$` (very common: shell snippets, JS template strings, dollar
+      // amounts) leaks those dollars out to the math parser and they
+      // get rendered as broken inline math until the closing fence
+      // arrives. Shiki is independently deferred via `defer={isStreaming}`
+      // on the SyntaxHighlighter component, so we don't pay code-block
+      // tokenization on every token even with this set.
+      parseIncompleteMarkdown
+      plugins={plugins}
+      preprocess={preprocessMarkdown}
+    />
+  )
+}
+
+interface MarkdownTextContentProps extends MarkdownTextSurfaceProps {
+  isRunning: boolean
+  text: string
+}
+
+export function MarkdownTextContent({ isRunning, text, ...surfaceProps }: MarkdownTextContentProps) {
+  return (
+    <TextMessagePartProvider isRunning={isRunning} text={text}>
+      <DeferStreamingText>
+        <MarkdownTextSurface {...surfaceProps} />
+      </DeferStreamingText>
+    </TextMessagePartProvider>
+  )
+}
+
+const MarkdownTextImpl = () => {
+  return (
     <DeferStreamingText>
-      <StreamdownTextPrimitive
-        components={components}
-        containerClassName={cn(
-          'aui-md prose w-full max-w-none overflow-hidden text-[length:var(--conversation-text-font-size)] leading-(--dt-line-height) text-foreground',
-          'prose-p:leading-(--dt-line-height) prose-li:leading-(--dt-line-height)',
-          'prose-headings:text-foreground prose-strong:text-foreground',
-          'prose-a:break-words prose-p:[overflow-wrap:anywhere]',
-          'prose-li:marker:text-muted-foreground/70',
-          'prose-code:rounded-[0.25rem] prose-code:px-[0.1875rem] prose-code:py-px prose-code:font-mono prose-code:text-[0.9em] prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
-          '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&>*+*]:mt-1'
-        )}
-        lineNumbers={false}
-        mode="streaming"
-        // Always auto-close incomplete fences — even during streaming.
-        // Without this, an unclosed ```python ... ``` whose body contains
-        // `$` (very common: shell snippets, JS template strings, dollar
-        // amounts) leaks those dollars out to the math parser and they
-        // get rendered as broken inline math until the closing fence
-        // syntax highlighting. Shiki is independently deferred via `defer={isStreaming}`
-        // on the SyntaxHighlighter component (uses a 120 ms delay during streaming
-        // to avoid re-tokenizing on every token, and 0 ms delay once streaming ends),
-        // so we don't pay code-block tokenization on every token even with this set.
-        parseIncompleteMarkdown
-        plugins={plugins}
-        preprocess={preprocessMarkdown}
-      />
+      <MarkdownTextSurface />
     </DeferStreamingText>
   )
 }
