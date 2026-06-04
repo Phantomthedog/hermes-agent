@@ -114,6 +114,10 @@ def _locales_dir() -> Path:
             override,
         )
 
+    # agent/locales/ -- package-data directory inside the agent package.
+    bundled = Path(__file__).resolve().parent / "locales"
+    if bundled.is_dir():
+        return bundled
     # agent/i18n.py -> agent/ -> repo root (source checkout, editable install)
     source_dir = Path(__file__).resolve().parent.parent / "locales"
     if source_dir.is_dir():
