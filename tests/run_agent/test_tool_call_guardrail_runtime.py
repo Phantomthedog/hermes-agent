@@ -177,11 +177,15 @@ def test_same_tool_failure_warning_tells_model_to_recover_with_tools():
 
     content = messages[0]["content"]
     assert "same_tool_failure_warning" in content
-    assert "Do not switch to text-only replies" in content
-    assert "keep using tools" in content
-    assert "pwd && ls -la" in content
-    assert "absolute path" in content
-    assert "different tool" in content
+    # 3 different commands → distinct_signatures=3 → external-blocker hint
+    assert "different argument sets" in content
+    assert "external or systemic" in content
+    assert "switch to a completely different approach" in content
+    # Should NOT contain the per-tool "try this tool-specific fix" text
+    # (pwd, absolute path, different tool) since the hint now targets
+    # the systemic-blocker case.
+    assert "pwd && ls -la" not in content
+    assert "absolute path" not in content
 
 
 def test_config_enabled_hard_stop_concurrent_path_does_not_submit_blocked_calls_and_preserves_result_order():

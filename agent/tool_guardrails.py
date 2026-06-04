@@ -333,10 +333,18 @@ class ToolCallGuardrailController:
                 )
 
             if self.config.warnings_enabled and same_count >= self.config.same_tool_failure_warn_after:
+                # Count how many distinct argument signatures have failed for
+                # this tool.  When > 1 the model is already trying different
+                # inputs — the hint should say the blocker is external, not
+                # suggest yet another variation.
+                distinct = sum(
+                    1 for sig, cnt in self._exact_failure_counts.items()
+                    if sig.tool_name == tool_name
+                )
                 return ToolGuardrailDecision(
                     action="warn",
                     code="same_tool_failure_warning",
-                    message=_tool_failure_recovery_hint(tool_name, same_count),
+                    message=_tool_failure_recovery_hint(tool_name, same_count, distinct_signatures=distinct),
                     tool_name=tool_name,
                     count=same_count,
                     signature=signature,
@@ -403,8 +411,27 @@ def append_toolguard_guidance(result: str, decision: ToolGuardrailDecision) -> s
     return (result or "") + suffix
 
 
-def _tool_failure_recovery_hint(tool_name: str, count: int) -> str:
-    """Action-oriented guidance for recovering from repeated tool failures."""
+def _tool_failure_recovery_hint(tool_name: str, count: int, distinct_signatures: int = 1) -> str:
+    """Action-oriented guidance for recovering from repeated tool failures.
+
+    When *distinct_signatures* > 1 the model has already tried different
+    arguments and the tool keeps failing — the hint should say so rather
+    than suggesting the same fruitless pivot.
+    """
+    if distinct_signatures > 1 and count > 1:
+        # Model tried different arguments but the tool keeps failing.
+        # The blocker is external or systemic — tell the model to switch
+        # approach entirely instead of suggesting different arguments.
+        return (
+            f"{tool_name} has failed {count} times this turn with {distinct_signatures} "
+            "different argument sets. The blocker appears to be external or systemic — "
+            "trying different inputs to this same tool will not help. "
+            "Do not switch to text-only replies; keep using tools, but inspect the "
+            "error pattern and switch to a completely different approach. "
+            "If the blocker is external and you have enough information already, "
+            "report what you have and move on."
+        )
+
     common = (
         f"{tool_name} has failed {count} times this turn. This looks like a loop. "
         "Do not switch to text-only replies; keep using tools, but diagnose before retrying. "

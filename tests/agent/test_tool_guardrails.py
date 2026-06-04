@@ -160,11 +160,48 @@ def test_same_tool_varying_args_warns_by_default_without_halting():
     assert first.action == "allow"
     assert [second.action, third.action, fourth.action] == ["warn", "warn", "warn"]
     assert {second.code, third.code, fourth.code} == {"same_tool_failure_warning"}
-    assert "Do not switch to text-only replies" in second.message
-    assert "keep using tools" in second.message
-    assert "diagnose before retrying" in second.message
-    assert "different tool" in second.message
+    # When distinct signatures > 1 the hint should NOT say "try different arguments"
+    # (the model is already doing that) — it should say the blocker is external.
+    assert "different argument sets" in second.message
+    assert "external or systemic" in second.message
+    assert "switch to a completely different approach" in second.message
     assert controller.halt_decision is None
+
+
+def test_same_tool_same_args_warning_hint_says_identical():
+    """Same arguments repeated → exact-failure warning fires first, says identical."""
+    controller = ToolCallGuardrailController(
+        ToolCallGuardrailConfig(same_tool_failure_warn_after=2, same_tool_failure_halt_after=3)
+    )
+
+    args = {"command": "cmd-1"}
+    first = controller.after_call("terminal", args, '{"exit_code":1}', failed=True)
+    second = controller.after_call("terminal", args, '{"exit_code":1}', failed=True)
+    third = controller.after_call("terminal", args, '{"exit_code":1}', failed=True)
+
+    assert first.action == "allow"
+    assert second.action == "warn"
+    # Same args repeated triggers exact-failure warning first (signature count=2)
+    assert second.code == "repeated_exact_failure_warning"
+    assert "identical arguments" in second.message
+    assert "change strategy" in second.message
+
+
+def test_non_terminal_varying_args_warning_mentions_external_blocker():
+    """Non-terminal tools with varying args get the external-blocker hint."""
+    controller = ToolCallGuardrailController(
+        ToolCallGuardrailConfig(same_tool_failure_warn_after=2, same_tool_failure_halt_after=3)
+    )
+
+    first = controller.after_call("web_extract", {"urls": ["https://a.com"]}, '{"results":[{"error":"Blocked"}]}', failed=True)
+    second = controller.after_call("web_extract", {"urls": ["https://b.com"]}, '{"results":[{"error":"Blocked"}]}', failed=True)
+    third = controller.after_call("web_extract", {"urls": ["https://c.com"]}, '{"results":[{"error":"Blocked"}]}', failed=True)
+
+    assert first.action == "allow"
+    assert second.action == "warn"
+    assert "different argument sets" in second.message
+    assert "external or systemic" in second.message
+    assert "completely different approach" in second.message
 
 
 def test_hard_stop_enabled_halts_same_tool_varying_args_failure_streak():
