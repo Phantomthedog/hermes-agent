@@ -202,11 +202,12 @@ describe('desktop slash command curation', () => {
     expect(isDesktopSlashCommand('/writing-plans')).toBe(true)
   })
 
-  it('does not suggest skill commands in the slash palette', () => {
-    // Skill commands are executable but not suggested
-    expect(isDesktopSlashSuggestion('/plan')).toBe(false)
-    expect(isDesktopSlashSuggestion('/xhs-image')).toBe(false)
-    expect(isDesktopSlashSuggestion('/hermes-agent-dev')).toBe(false)
+  it('includes skill commands from commands.catalog in the slash palette', () => {
+    // Skills from commands.catalog are now included in the merged
+    // results alongside complete.slash entries.
+    expect(isDesktopSlashSuggestion('/plan')).toBe(true)
+    expect(isDesktopSlashSuggestion('/xhs-image')).toBe(true)
+    expect(isDesktopSlashSuggestion('/hermes-agent-dev')).toBe(true)
   })
 
   it('still blocks known desktop-unavailable commands for skill commands that shadow a block', () => {
