@@ -27,6 +27,7 @@ const { execFileSync, spawn } = require('node:child_process')
 const { detectRemoteDisplay, isWindowsBinaryPathInWsl, isWslEnvironment } = require('./bootstrap-platform.cjs')
 const { runBootstrap } = require('./bootstrap-runner.cjs')
 const { canImportHermesCli, verifyHermesCli } = require('./backend-probes.cjs')
+const { createDictationControlClient } = require('./dictation-control.cjs')
 const {
   authModeFromStatus,
   buildGatewayWsUrl,
@@ -4007,55 +4008,15 @@ function createWindow() {
   // before-input-event and calls the tray app's control API.
   let rightCtrlDown = false
 
-  // Cache the control URL so we don't probe every keypress.
-  let dictationControlUrl = null
-
-  function getDictationControlUrl() {
-    if (dictationControlUrl) return dictationControlUrl
-
-    // Try localhost:10011 first (Windows tray app on same host).
-    const baseUrl = 'http://127.0.0.1:10011'
-
-    // If Hermes is running inside WSLg, the Windows host is at
-    // the gateway IP (/etc/resolv.conf nameserver) and the tray
-    // app binds to the Windows loopback.
-    if (isWslEnvironment()) {
-      try {
-        const resolv = fs.readFileSync('/etc/resolv.conf', 'utf-8')
-        const match = resolv.match(/^nameserver\s+(\S+)/m)
-        if (match) {
-          const wslGateway = match[1].trim()
-          dictationControlUrl = `http://${wslGateway}:10011`
-          return dictationControlUrl
-        }
-      } catch (_) {
-        // fall through to localhost
-      }
-    }
-
-    dictationControlUrl = baseUrl
-    return dictationControlUrl
-  }
+  const dictationControlClient = createDictationControlClient({
+    isWsl: IS_WSL,
+    log: rememberLog
+  })
 
   function sendDictateRequest(action) {
-    const url = `${getDictationControlUrl()}/${action}`
-    rememberLog(`[HERMES_DICTATE] control request POST ${url}`)
-
-    const req = http.request(url, { method: 'POST', timeout: 3000 }, res => {
-      let body = ''
-      res.on('data', chunk => { body += chunk })
-      res.on('end', () => {
-        rememberLog(`[HERMES_DICTATE] control response ${res.statusCode}: ${body}`)
-      })
+    dictationControlClient.send(action).catch(err => {
+      rememberLog(`[HERMES_DICTATE] control error: ${err?.message || err}`)
     })
-    req.on('error', err => {
-      rememberLog(`[HERMES_DICTATE] control error: ${err.message}`)
-    })
-    req.on('timeout', () => {
-      req.destroy()
-      rememberLog('[HERMES_DICTATE] control request timed out')
-    })
-    req.end()
   }
 
   mainWindow.webContents.on('before-input-event', (_event, input) => {

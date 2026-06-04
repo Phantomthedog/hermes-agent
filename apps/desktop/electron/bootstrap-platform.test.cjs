@@ -82,7 +82,7 @@ test('detectRemoteDisplay honors the HERMES_DESKTOP_DISABLE_GPU override both wa
 
 test('packaged electron entrypoints do not require unpackaged npm modules', () => {
   const electronDir = __dirname
-  const entrypoints = ['main.cjs', 'preload.cjs', 'bootstrap-platform.cjs']
+  const entrypoints = ['main.cjs', 'preload.cjs', 'bootstrap-platform.cjs', 'dictation-control.cjs']
   // - electron: provided by the electron runtime, always resolvable in packaged builds.
   // - node-pty: hoisted by workspace dedup AND shipped via extraResources to
   //   resources/native-deps/node-pty (see scripts/stage-native-deps.cjs). main.cjs
