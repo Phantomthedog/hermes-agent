@@ -102,7 +102,7 @@ from tools.tool_backend_helpers import (  # noqa: F401
     nous_tool_gateway_unavailable_message,
     prefers_gateway,
 )
-from tools.url_safety import is_safe_url
+from tools.url_safety import is_safe_url, is_always_blocked_url, _detect_proxy_dns_hijack
 import sys
 
 logger = logging.getLogger(__name__)
@@ -931,16 +931,45 @@ async def web_extract_tool(
         logger.info("Extracting content from %d URL(s)", len(urls))
 
         # ── SSRF protection — filter out private/internal URLs before any backend ──
+        # Cloud extract backends (Firecrawl, Parallel, Tavily, Exa) fetch URLs
+        # from their own servers — local DNS resolution is misleading when
+        # behind a proxy DNS hijack (Clash, Verge, etc. resolve all hostnames
+        # to 198.18.0.0/15).  For cloud backends we skip the local DNS check
+        # and only enforce the absolute security floor (cloud metadata endpoints).
+        # Local/self-hosted backends (SearXNG) keep the full SSRF check.
         safe_urls = []
         ssrf_blocked: List[Dict[str, Any]] = []
+        _extract_backend = _get_extract_backend()
+        _cloud_extract_backends = {"firecrawl", "parallel", "tavily", "exa"}
+        _is_cloud_extract = _extract_backend in _cloud_extract_backends
+        if _is_cloud_extract and _detect_proxy_dns_hijack():
+            logger.warning(
+                "Proxy DNS hijack detected: skipping local SSRF check for "
+                "cloud extract backend '%s' — cloud service handles its own "
+                "URL fetch.",
+                _extract_backend,
+            )
+
         for url in urls:
-            if not is_safe_url(url):
-                ssrf_blocked.append({
-                    "url": url, "title": "", "content": "",
-                    "error": "Blocked: URL targets a private or internal network address",
-                })
+            if _is_cloud_extract:
+                # Cloud extract — only the absolute security floor applies.
+                # The cloud service handles its own URL fetch and SSRF.
+                if is_always_blocked_url(url):
+                    ssrf_blocked.append({
+                        "url": url, "title": "", "content": "",
+                        "error": "Blocked: URL targets a cloud metadata endpoint.",
+                    })
+                else:
+                    safe_urls.append(url)
             else:
-                safe_urls.append(url)
+                # Local/self-hosted backend — full SSRF check via local DNS.
+                if not is_safe_url(url):
+                    ssrf_blocked.append({
+                        "url": url, "title": "", "content": "",
+                        "error": "Blocked: URL targets a private or internal network address",
+                    })
+                else:
+                    safe_urls.append(url)
 
         # Dispatch only safe URLs to the configured backend
         if not safe_urls:

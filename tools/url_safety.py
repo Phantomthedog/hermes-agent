@@ -27,6 +27,7 @@ import ipaddress
 import logging
 import os
 import socket
+from typing import Optional
 from urllib.parse import urlparse
 
 from utils import is_truthy_value
@@ -79,6 +80,57 @@ _TRUSTED_PRIVATE_IP_HOSTS = frozenset({
 # Must be blocked explicitly. Used by carrier-grade NAT, Tailscale/WireGuard
 # VPNs, and some cloud internal networks.
 _CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+# 198.18.0.0/15 (RFC 2544 Benchmark Range) — used by Clash, Clash Verge, and
+# other proxy tools for DNS hijack: ALL external domains resolve to this range
+# so the proxy can intercept and route them.  Python's ipaddress module
+# classifies this range as is_private() on 3.13+ and is_reserved() on 3.12-,
+# causing is_safe_url() to block every external URL when behind such a proxy.
+_PROXY_BENCHMARK_NETWORK = ipaddress.ip_network("198.18.0.0/15")
+
+# Cache for the proxy DNS hijack probe — probed once per process lifetime.
+_proxy_dns_hijack_cache: Optional[bool] = None
+
+
+def _detect_proxy_dns_hijack() -> bool:
+    """Return True when the local DNS resolver hijacks all hostnames to
+    the proxy benchmark range (198.18.0.0/15).
+
+    Probes three well-known external hostnames.  If ALL resolve to
+    198.18.x.x, the DNS is almost certainly being hijacked by a local
+    proxy (Clash, Clash Verge, V2Ray, sing-box, etc.).
+
+    The result is cached for the process lifetime.
+    """
+    global _proxy_dns_hijack_cache
+    if _proxy_dns_hijack_cache is not None:
+        return _proxy_dns_hijack_cache
+
+    _probe_hosts = ("github.com", "google.com", "cloudflare.com")
+    for host in _probe_hosts:
+        try:
+            for _family, _type, _proto, _cn, sockaddr in socket.getaddrinfo(
+                host, 80, socket.AF_UNSPEC, socket.SOCK_STREAM
+            ):
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip not in _PROXY_BENCHMARK_NETWORK:
+                    # At least one resolved IP is outside the benchmark range —
+                    # DNS is not hijacked (or not fully hijacked).
+                    _proxy_dns_hijack_cache = False
+                    return False
+        except socket.gaierror:
+            # DNS failure for a probe host — can't confirm hijack.
+            _proxy_dns_hijack_cache = False
+            return False
+
+    # All probes resolved to the benchmark range — proxy DNS hijack confirmed.
+    _proxy_dns_hijack_cache = True
+    logger.warning(
+        "Proxy DNS hijack detected: all external hostnames resolve to "
+        "198.18.0.0/15 (RFC 2544 benchmark range). "
+        "Local SSRF checks against cloud extract backends will be skipped."
+    )
+    return True
 
 # ---------------------------------------------------------------------------
 # Global toggle: allow private/internal IP resolution

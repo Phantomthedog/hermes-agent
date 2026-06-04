@@ -549,3 +549,74 @@ class TestIPv4MappedIPv6SSRF:
             (10, 1, 6, "", ("::ffff:100.100.100.200", 0, 0, 0)),
         ]):
             assert is_safe_url("http://aliyun-metadata.internal/") is False
+
+
+class TestDetectProxyDnsHijack:
+    """Tests for _detect_proxy_dns_hijack() — proxy benchmark-range detection."""
+
+    def _benchmark_addrinfo(self, base=49):
+        """Return a mock getaddrinfo response resolving to 198.18.0.x."""
+        return [(2, 1, 6, "", (f"198.18.0.{base}", 0))]
+
+    def test_all_probes_in_benchmark_range(self):
+        """Returns True when all 3 probe hosts resolve to 198.18.0.0/15."""
+        with patch("socket.getaddrinfo", return_value=self._benchmark_addrinfo(49)):
+            from tools.url_safety import _detect_proxy_dns_hijack
+            # Reset cache for test
+            import tools.url_safety as us
+            us._proxy_dns_hijack_cache = None
+            assert _detect_proxy_dns_hijack() is True
+
+    def test_mixed_resolution_not_hijack(self):
+        """Returns False when one probe resolves to a public IP."""
+        def _mock_getaddrinfo(host, *args, **kwargs):
+            if host == "github.com":
+                return [(2, 1, 6, "", ("140.82.121.3", 0))]
+            return self._benchmark_addrinfo(50)
+        import tools.url_safety as us
+        us._proxy_dns_hijack_cache = None
+        with patch("socket.getaddrinfo", side_effect=_mock_getaddrinfo):
+            from tools.url_safety import _detect_proxy_dns_hijack
+            assert _detect_proxy_dns_hijack() is False
+
+    def test_dns_failure_not_hijack(self):
+        """Returns False when DNS fails for a probe host."""
+        def _mock_getaddrinfo(host, *args, **kwargs):
+            if host == "github.com":
+                raise socket.gaierror("DNS failure")
+            return self._benchmark_addrinfo(51)
+        import tools.url_safety as us
+        us._proxy_dns_hijack_cache = None
+        with patch("socket.getaddrinfo", side_effect=_mock_getaddrinfo):
+            from tools.url_safety import _detect_proxy_dns_hijack
+            assert _detect_proxy_dns_hijack() is False
+
+    def test_result_cached(self):
+        """Second call returns cached result without re-probing."""
+        import tools.url_safety as us
+        us._proxy_dns_hijack_cache = None
+        call_count = 0
+        def _count_calls(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return self._benchmark_addrinfo(52)
+        with patch("socket.getaddrinfo", side_effect=_count_calls):
+            assert us._detect_proxy_dns_hijack() is True
+            assert call_count == 3  # 3 probe hosts
+            # Second call: should use cache
+            assert us._detect_proxy_dns_hijack() is True
+            assert call_count == 3  # No extra DNS calls
+
+    def test_does_not_affect_is_always_blocked_url(self):
+        """is_always_blocked_url still works correctly with benchmark-range DNS.
+
+        Literal metadata IPs should NOT match benchmark range, so they
+        must still be blocked.  Ordinary hostnames resolving to benchmark
+        range should NOT be blocked (they're not metadata endpoints).
+        """
+        import tools.url_safety as us
+        us._proxy_dns_hijack_cache = None
+
+        # Even though DNS is hijacked, literal IP tests pass
+        assert is_always_blocked_url("http://169.254.169.254/latest/meta-data/") is True
+        assert is_always_blocked_url("https://example.com/path") is False
