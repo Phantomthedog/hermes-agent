@@ -1377,9 +1377,7 @@ async function applyUpdates(opts = {}) {
       env: {
         ...process.env,
         HERMES_HOME,
-        PATH: [path.join(HERMES_HOME, 'node', 'bin'), venvBin, process.env.PATH]
-          .filter(Boolean)
-          .join(path.delimiter)
+        PATH: [path.join(HERMES_HOME, 'node', 'bin'), venvBin, process.env.PATH].filter(Boolean).join(path.delimiter)
       },
       detached: true,
       stdio: 'ignore',
@@ -1453,7 +1451,7 @@ function shellQuote(value) {
 // (`hermes desktop --build-only`), then atomically swap the running .app bundle
 // with the freshly built one and relaunch. Degrades to "backend updated,
 // restart to load the new GUI" if the swap can't be performed.
-async function applyUpdatesPosixInApp(opts = {}) {
+async function applyUpdatesPosixInApp() {
   const updateRoot = resolveUpdateRoot()
   const hermes = resolveHermesCliBinary(updateRoot)
   if (!hermes) {
@@ -1926,7 +1924,9 @@ async function ensureRuntime(backend) {
         stages: [],
         protocolVersion: null
       })
-    } catch {}
+    } catch {
+      void 0
+    }
 
     bootstrapAbortController = new AbortController()
 
@@ -1944,10 +1944,14 @@ async function ensureRuntime(backend) {
         // bootstrap and a log-write failure doesn't suppress the UI signal.
         try {
           rememberLog(`[bootstrap] ${JSON.stringify(ev)}`)
-        } catch {}
+        } catch {
+          void 0
+        }
         try {
           broadcastBootstrapEvent(ev)
-        } catch {}
+        } catch {
+          void 0
+        }
       },
       writeMarker: writeBootstrapMarker
     })
@@ -2873,7 +2877,9 @@ function buildApplicationMenu() {
       {
         label: 'Actual Size',
         accelerator: 'CommandOrControl+0',
-        click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomLevel(0) }
+        click: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomLevel(0)
+        }
       },
       {
         label: 'Zoom In',
@@ -3216,7 +3222,7 @@ function openOauthLoginWindow(baseUrl) {
     let win = null
     let pollTimer = null
 
-    const finish = (err) => {
+    const finish = err => {
       if (settled) return
       settled = true
       if (pollTimer) clearInterval(pollTimer)
@@ -3339,7 +3345,7 @@ function fetchJsonViaOauthSession(url, options = {}) {
           return
         }
         const looksHtml = /^\s*<(?:!doctype|html)/i.test(text)
-        const contentType = String((res.headers['content-type'] || res.headers['Content-Type'] || ''))
+        const contentType = String(res.headers['content-type'] || res.headers['Content-Type'] || '')
         if (looksHtml || contentType.includes('text/html')) {
           reject(new Error(`Expected JSON from ${url} but got HTML (status ${statusCode}).`))
           return
@@ -3578,8 +3584,7 @@ async function resolveRemoteBackend() {
       ticket = await mintGatewayWsTicket(baseUrl)
     } catch (error) {
       const err = new Error(
-        'Your remote gateway session has expired. ' +
-          'Open Settings → Gateway and click "Sign in" again.'
+        'Your remote gateway session has expired. ' + 'Open Settings → Gateway and click "Sign in" again.'
       )
       err.needsOauthLogin = true
       err.cause = error
@@ -4094,7 +4099,9 @@ ipcMain.handle('hermes:bootstrap:cancel', async () => {
   if (bootstrapAbortController) {
     try {
       bootstrapAbortController.abort()
-    } catch {}
+    } catch {
+      void 0
+    }
     return { ok: true, cancelled: true }
   }
   return { ok: false, cancelled: false }
@@ -4127,9 +4134,26 @@ ipcMain.handle('hermes:connection-config:save', async (_event, payload) => {
 ipcMain.handle('hermes:connection-config:apply', async (_event, payload) => {
   const config = coerceDesktopConnectionConfig(payload)
   writeDesktopConnectionConfig(config)
-  resetHermesConnection()
-  setTimeout(() => mainWindow?.reload(), 150)
 
+  // Capture the reference before resetHermesConnection() nulls hermesProcess,
+  // so we can wait for actual exit rather than assuming a fixed delay is enough.
+  const dying = hermesProcess && !hermesProcess.killed ? hermesProcess : null
+  resetHermesConnection()
+
+  if (dying) {
+    await new Promise(resolve => {
+      const timer = setTimeout(() => {
+        try { dying.kill('SIGKILL') } catch {}
+        resolve()
+      }, 5000)
+      dying.once('exit', () => {
+        clearTimeout(timer)
+        resolve()
+      })
+    })
+  }
+
+  mainWindow?.reload()
   return sanitizeDesktopConnectionConfig(config)
 })
 
@@ -4672,7 +4696,9 @@ app.on('before-quit', () => {
   if (bootstrapAbortController) {
     try {
       bootstrapAbortController.abort()
-    } catch {}
+    } catch {
+      void 0
+    }
   }
 
   if (desktopLogFlushTimer) {
