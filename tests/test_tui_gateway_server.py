@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from tui_gateway import server
 
 
@@ -5479,6 +5481,15 @@ def test_notification_poller_requeues_when_busy(monkeypatch):
 # ── Idle session sweeper tests ───────────────────────────────────────
 
 
+@pytest.fixture
+def _clean_sessions():
+    """Isolate idle-sweeper tests: clear any global session state from
+    prior tests so the sweeper only sees the sessions we explicitly add."""
+    server._sessions.clear()
+    yield
+    server._sessions.clear()
+
+
 def test_is_session_truly_idle_returns_false_when_running():
     """A session with an active LLM turn is not idle regardless of age."""
     now = time.time()
@@ -5554,6 +5565,7 @@ def test_is_session_truly_idle_returns_false_if_already_finalized():
     assert server._is_session_truly_idle(session, now) is False
 
 
+@pytest.mark.usefixtures('_clean_sessions')
 def test_idle_sweeper_finalizes_stale_session(monkeypatch):
     """The sweeper loop finalizes sessions idle past threshold."""
     finalized = []
@@ -5587,6 +5599,7 @@ def test_idle_sweeper_finalizes_stale_session(monkeypatch):
         server._sessions.pop("sweep-stale", None)
 
 
+@pytest.mark.usefixtures('_clean_sessions')
 def test_idle_sweeper_skips_active_sessions(monkeypatch):
     """The sweeper loop does NOT finalize sessions still running."""
     finalized = []
@@ -5614,6 +5627,7 @@ def test_idle_sweeper_skips_active_sessions(monkeypatch):
         server._sessions.pop("sweep-active", None)
 
 
+@pytest.mark.usefixtures('_clean_sessions')
 def test_session_create_does_not_close_previous_session(monkeypatch):
     """Regression: Desktop ``session.create`` must NOT call session.close /
     _finalize_session for any previous session. Confirms the sweeper is the
@@ -5668,6 +5682,7 @@ def test_session_create_does_not_close_previous_session(monkeypatch):
 # ── Resume-after-idle-finalized lifecycle ────────────────────────────
 
 
+@pytest.mark.usefixtures('_clean_sessions')
 def test_resumed_session_can_be_finalized_again(monkeypatch):
     """A session finalized by the idle sweeper can be resumed and finalized
     again after another idle period.
@@ -5763,6 +5778,7 @@ def test_resumed_session_can_be_finalized_again(monkeypatch):
         server._sessions.pop(sid, None)
 
 
+@pytest.mark.usefixtures('_clean_sessions')
 def test_prompt_submit_clears_finalized_flag(monkeypatch):
     """Sending a message to a previously finalized session clears the
     _finalized flag so it can be finalized again after the next idle."""
