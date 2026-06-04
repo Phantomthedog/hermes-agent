@@ -256,7 +256,7 @@ export function useComposerState({
             return handleResolvedPaste({ bracketed: false, cursor, text: preferredText, value })
           }
 
-          void onClipboardPaste(false)
+          void onClipboardPaste(true)
 
           return null
         })
