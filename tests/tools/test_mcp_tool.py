@@ -1378,6 +1378,58 @@ class TestBuildSafeEnv:
         assert "DATABASE_URL" not in result
         assert "API_SECRET" not in result
 
+    def test_proxy_env_vars_preserved(self):
+        """Proxy env vars from os.environ ARE passed through by _SAFE_ENV_KEYS.
+
+        Both uppercase (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY) and
+        lowercase variants, plus npm_config_*, should survive the filter
+        so that MCP stdio subprocesses (npx, codex, playwright, etc.)
+        inherit the parent's proxy configuration.
+        """
+        from tools.mcp_tool import _build_safe_env
+
+        fake_env = {
+            "PATH": "/usr/bin",
+            # Proxy vars — all should pass through
+            "HTTP_PROXY": "http://proxy.example.com:8080",
+            "HTTPS_PROXY": "http://proxy.example.com:8443",
+            "ALL_PROXY": "socks5://proxy.example.com:1080",
+            "NO_PROXY": "localhost,127.0.0.1",
+            "http_proxy": "http://proxy.example.com:8080",
+            "https_proxy": "http://proxy.example.com:8443",
+            "all_proxy": "socks5://proxy.example.com:1080",
+            "no_proxy": "localhost,127.0.0.1",
+            # npm_config_* should also pass through
+            "npm_config_proxy": "http://proxy.example.com:8080",
+            "npm_config_https_proxy": "http://proxy.example.com:8443",
+            "NPM_CONFIG_PROXY": "http://proxy.example.com:8080",
+            "NPM_CONFIG_HTTPS_PROXY": "http://proxy.example.com:8443",
+            # A secret that must still be excluded
+            "OPENAI_API_KEY": "sk-abc123",
+        }
+        with patch.dict("os.environ", fake_env, clear=True):
+            result = _build_safe_env(None)
+
+        # All proxy vars present
+        assert result["HTTP_PROXY"] == "http://proxy.example.com:8080"
+        assert result["HTTPS_PROXY"] == "http://proxy.example.com:8443"
+        assert result["ALL_PROXY"] == "socks5://proxy.example.com:1080"
+        assert result["NO_PROXY"] == "localhost,127.0.0.1"
+        assert result["http_proxy"] == "http://proxy.example.com:8080"
+        assert result["https_proxy"] == "http://proxy.example.com:8443"
+        assert result["all_proxy"] == "socks5://proxy.example.com:1080"
+        assert result["no_proxy"] == "localhost,127.0.0.1"
+        assert result["npm_config_proxy"] == "http://proxy.example.com:8080"
+        assert result["npm_config_https_proxy"] == "http://proxy.example.com:8443"
+        assert result["NPM_CONFIG_PROXY"] == "http://proxy.example.com:8080"
+        assert result["NPM_CONFIG_HTTPS_PROXY"] == "http://proxy.example.com:8443"
+
+        # Non-proxy unsafe vars still excluded
+        assert "OPENAI_API_KEY" not in result
+
+        # Count: all proxy + safe baseline (PATH only, HOME not set in fake_env)
+        assert len(result) == 13  # PATH + 12 proxy/npm vars
+
 
 # ---------------------------------------------------------------------------
 # _sanitize_error

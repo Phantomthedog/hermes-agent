@@ -264,8 +264,23 @@ _MAX_INITIAL_CONNECT_RETRIES = 3 # retries for the very first connection attempt
 _MAX_BACKOFF_SECONDS = 60
 
 # Environment variables that are safe to pass to stdio subprocesses
+#
+# Proxy env vars are included because MCP servers (npx, codex, playwright,
+# context7, chrome-devtools-mcp) often need internet access on first run
+# (download packages, fetch remote data).  Passing the parent process's
+# proxy env is more durable than hardcoding a gateway IP in every server's
+# ``env:`` config block — the IP can change on DHCP/WSL restart.
+#
+# NPM config vars are included for the same reason: npx-launched servers
+# need proxy settings to download the server package on first run.
 _SAFE_ENV_KEYS = frozenset({
     "PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "SHELL", "TMPDIR",
+    # Proxy env vars — both cases because different tools prefer one
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+    # npm/node proxy config
+    "NPM_CONFIG_PROXY", "NPM_CONFIG_HTTPS_PROXY",
+    "npm_config_proxy", "npm_config_https_proxy",
 })
 
 # Regex for credential patterns to strip from error messages
