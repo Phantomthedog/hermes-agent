@@ -7820,10 +7820,19 @@ def _kill_stale_dashboard_processes(
     exclude: set[int] | None = None
     raw_pid = os.environ.get("HERMES_DESKTOP_CHILD_PID")
     if raw_pid:
-        try:
-            exclude = {int(raw_pid)}
-        except (ValueError, TypeError):
-            pass
+        # The desktop may manage several backends (one per active profile) and
+        # passes them comma-separated; a lone int still parses for back-compat.
+        parsed: set[int] = set()
+        for part in raw_pid.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                parsed.add(int(part))
+            except (ValueError, TypeError):
+                pass
+        if parsed:
+            exclude = parsed
 
     pids = _find_stale_dashboard_pids(exclude_pids=exclude)
     if not pids:
@@ -8030,7 +8039,10 @@ def _update_via_zip(args):
     # may point to a Python without FTS5.  Rebuild it so the new managed
     # uv provides a fresh interpreter with FTS5 guaranteed.
     if fresh_bootstrap and uv_bin:
-        rebuild_venv(uv_bin, PROJECT_ROOT / "venv")
+        if not rebuild_venv(uv_bin, PROJECT_ROOT / "venv"):
+            raise RuntimeError(
+                "venv rebuild failed; aborting update before dependency install"
+            )
 
     pip_cmd = [sys.executable, "-m", "pip"]
     if not uv_bin:
@@ -10215,7 +10227,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 return
             print("✗ Not a git repository. Please reinstall:")
             print(
-                "  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"
+                "  curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
             )
             sys.exit(1)
 
@@ -10573,7 +10585,10 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # may point to a Python without FTS5.  Rebuild it so the new managed
         # uv provides a fresh interpreter with FTS5 guaranteed.
         if fresh_bootstrap and uv_bin:
-            rebuild_venv(uv_bin, PROJECT_ROOT / "venv")
+            if not rebuild_venv(uv_bin, PROJECT_ROOT / "venv"):
+                raise RuntimeError(
+                    "venv rebuild failed; aborting update before dependency install"
+                )
 
         pip_cmd = [sys.executable, "-m", "pip"]
         if not uv_bin:
