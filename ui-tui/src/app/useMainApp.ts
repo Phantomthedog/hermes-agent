@@ -545,7 +545,18 @@ export function useMainApp(gw: GatewayClient) {
 
   const tabCwd = ui.info?.cwd
 
-  useTerminalTitle(model ? `${marker} ${model}${tabCwd ? ` · ${shortCwd(tabCwd, 24)}` : ''}` : 'Hermes')
+  // Session title from the gateway — set by auto_title_session after the first
+  // exchange, or via /title slash command.  When present, it takes priority over
+  // the model+cwd display.
+  const sessionTitle = ui.info?.title?.trim() ?? ''
+
+  useTerminalTitle(
+    sessionTitle
+      ? `${marker} ${sessionTitle}`
+      : model
+        ? `${marker} ${model}${tabCwd ? ` · ${shortCwd(tabCwd, 24)}` : ''}`
+        : 'Hermes'
+  )
 
   useEffect(() => {
     if (!ui.sid || !stdout) {

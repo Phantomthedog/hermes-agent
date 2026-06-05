@@ -1939,6 +1939,12 @@ def _session_info(agent, session: dict | None = None) -> dict:
         info["update_command"] = recommended_update_command()
     except Exception:
         pass
+    try:
+        key = (session or {}).get("session_key")
+        if key:
+            info["title"] = (_get_db().get_session_title(key) or "")
+    except Exception:
+        info["title"] = ""
     warn = _probe_credentials(agent)
     if warn:
         info["credential_warning"] = warn
@@ -4855,11 +4861,20 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 try:
                     from agent.title_generator import auto_title_session as _ats
 
+                    def _ts_on_title(title: str) -> None:
+                        """Push session title to terminal tab."""
+                        try:
+                            from agent import terminal_status as _ts
+                            _ts.set_session_title(title)
+                        except Exception:
+                            pass  # terminal_status not available
+
                     _ats(
                         _get_db(),
                         session.get("session_key") or sid,
                         text,
                         raw,
+                        title_callback=_ts_on_title,
                     )
                 except Exception:
                     pass

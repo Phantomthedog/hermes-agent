@@ -149,6 +149,20 @@ def is_enabled() -> bool:
 
     has_tty = _has_tty_device()
 
+    # In gateway mode /dev/tty is typically unavailable (stdout/stderr are
+    # piped through Node), but the parent (TUI / launcher) may have dup'd
+    # the real terminal fd and set HERMES_TERMINAL_FD so we can write OSC
+    # sequences directly.  Check that before giving up.
+    if not has_tty:
+        try:
+            fd_str = os.environ.get("HERMES_TERMINAL_FD")
+            if fd_str:
+                fd = int(fd_str)
+                os.write(fd, b"")  # verify it's actually writable
+                has_tty = True
+        except (OSError, ValueError, TypeError):
+            pass
+
     if mode == "on":
         _ENABLED_CACHE = has_tty
         return has_tty
