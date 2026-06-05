@@ -994,6 +994,7 @@ def _run_cleanup():
             session_id=_active_agent_ref.session_id if _active_agent_ref else None,
             platform="cli",
             reason="shutdown",
+            trigger="cli_exit",
         )
     except Exception:
         pass
@@ -6642,11 +6643,13 @@ class HermesCLI:
         """
         try:
             from hermes_cli.plugins import invoke_hook as _invoke_hook
+            _is_new = event_type == "on_session_reset"
             _invoke_hook(
                 event_type,
                 session_id=self.agent.session_id if self.agent else None,
                 platform=getattr(self, "platform", None) or "cli",
-                reason="new_session" if event_type == "on_session_reset" else "session_boundary",
+                reason="new_session" if _is_new else "session_boundary",
+                trigger="cli_new" if _is_new else "session_boundary",
             )
         except Exception:
             pass

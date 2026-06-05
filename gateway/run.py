@@ -3808,6 +3808,7 @@ class GatewayRunner:
                     session_id=getattr(agent, "session_id", None),
                     platform="gateway",
                     reason="shutdown",
+                    trigger="shutdown",
                 )
             except Exception:
                 pass
@@ -5055,6 +5056,7 @@ class GatewayRunner:
                                 session_id=entry.session_id,
                                 platform=_platform,
                                 reason="session_expired",
+                                trigger="session_expired",
                             )
                         except Exception:
                             pass
@@ -10095,6 +10097,7 @@ class GatewayRunner:
                 session_id=_old_sid,
                 platform=source.platform.value if source.platform else "",
                 reason="new_session",
+                trigger="gateway_new",
                 old_session_id=_old_sid,
                 new_session_id=new_entry.session_id if new_entry else None,
             )

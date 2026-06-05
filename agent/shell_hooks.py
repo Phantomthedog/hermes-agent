@@ -358,7 +358,132 @@ def _parse_single_entry(
 # Subprocess callback
 # ---------------------------------------------------------------------------
 
-_TOP_LEVEL_PAYLOAD_KEYS = {"tool_name", "args", "session_id", "parent_session_id"}
+_TOP_LEVEL_PAYLOAD_KEYS = {
+    "tool_name", "args", "session_id", "parent_session_id",
+    "trigger", "reason", "platform", "profile",
+    "conversation_id", "session_path", "finalized",
+}
+
+
+# ── Canonical on_session_finalize payload builder ───────────────────────
+# Every on_session_finalize hook payload should include the fields below.
+# Single function so future payload format changes do not break hooks again.
+
+_SESSION_FINALIZE_CANONICAL_FIELDS = [
+    "event",          # "on_session_finalize"
+    "session_id",     # string session identifier
+    "profile",        # active Hermes profile name
+    "cwd",            # working directory at hook fire time
+    "timestamp",      # ISO-8601 UTC timestamp
+    "trigger",        # tui_new | tui_exit | tui_close | tui_idle |
+                      # cli_exit | cli_new | session_expired | shutdown | unknown
+    "session_path",   # filesystem path to session file, if known
+    "conversation_id",# conversation / parent id if different from session_id
+    "finalized",      # always true — distinguishes from hook-event boilerplate
+    "extra",          # event-specific kwargs not captured in canonical fields
+]
+
+
+def _build_session_finalize_payload(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Build the canonical ``on_session_finalize`` payload dict.
+
+    Extends the base ``_serialize_payload`` output with a stable set of
+    fields that every hook consumer can rely on.  The ``extra`` dict
+    carries any kwargs that don't map to a canonical slot.
+    """
+    import os as _os
+    from datetime import datetime, timezone
+
+    # Base payload from the standard serializer
+    base: Dict[str, Any] = {
+        "hook_event_name": "on_session_finalize",
+        "tool_name": None,
+        "tool_input": None,
+        "session_id": kwargs.get("session_id") or kwargs.get("parent_session_id") or "",
+        "cwd": "",
+        "extra": {},
+    }
+
+    # Determine profile: explicit kwarg > HERMES_PROFILE > HERMES_HOME heuristic
+    profile = kwargs.get("profile", "") or _os.environ.get("HERMES_PROFILE", "")
+    if not profile:
+        try:
+            hermes_home = str(Path(_os.environ.get("HERMES_HOME", "~/.hermes")).expanduser())
+            for maybe_profile in (hermes_home / Path("profiles")).iterdir():
+                if maybe_profile.is_dir() and maybe_profile.name != "default":
+                    profile = maybe_profile.name
+                    break
+        except Exception:
+            pass
+
+    # Infer trigger from kwargs
+    reason = kwargs.get("reason", "")
+    platform = kwargs.get("platform", "")
+    trigger_map = {
+        ("shutdown",): "shutdown",
+        ("new_session", "session_boundary"): "cli_new",
+        ("session_expired",): "session_expired",
+        ("tui_new", "tui_close", "tui_shutdown", "tui_idle"): None,  # passthrough
+    }
+    trigger = kwargs.get("trigger", "")
+    if not trigger:
+        for reasons, mapped in trigger_map.items():
+            if reason in reasons:
+                trigger = mapped if mapped else reason
+                break
+    if not trigger:
+        trigger = reason if reason else "unknown"
+
+    # Determine session_path
+    session_path = kwargs.get("session_path", "")
+    if not session_path and base["session_id"]:
+        session_dir = _os.environ.get("HERMES_SESSION_DIR", "")
+        if not session_dir:
+            try:
+                hh = str(Path(_os.environ.get("HERMES_HOME", "~/.hermes")).expanduser())
+                session_dir = f"{hh}/profiles/{profile}/sessions" if profile else f"{hh}/sessions"
+            except Exception:
+                session_dir = ""
+        if session_dir:
+            candidate = Path(session_dir) / f"session_{base['session_id']}.json"
+            if candidate.exists():
+                session_path = str(candidate)
+            if not session_path:
+                import glob as _glob
+                matches = sorted(
+                    _glob.glob(f"{session_dir}/session_{base['session_id']}*.json"),
+                    key=_os.path.getmtime, reverse=True,
+                )
+                if matches:
+                    session_path = matches[0]
+
+    # Conversation ID is usually the same as session_id; some gateway paths
+    # carry a distinct ``conversation_id`` or ``old_session_id``.
+    conversation_id = kwargs.get("conversation_id", "") or base["session_id"]
+
+    # Collect extras: everything not captured in canonical fields
+    canonical_keys = {
+        "session_id", "parent_session_id", "profile", "cwd",
+        "trigger", "reason", "platform", "conversation_id",
+        "session_path", "finalized", "hook_event_name",
+        "tool_name", "tool_input", "extra",
+    }
+    extras = {k: v for k, v in kwargs.items() if k not in canonical_keys}
+
+    payload = {
+        "hook_event_name": "on_session_finalize",
+        "session_id": base["session_id"],
+        "profile": profile,
+        "cwd": str(Path.cwd()) if not _os.environ.get("_SHELL_HOOK_CWD_OVERRIDE") else "",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "trigger": trigger,
+        "session_path": session_path,
+        "conversation_id": conversation_id,
+        "finalized": True,
+        "extra": extras,
+    }
+
+    return payload
 
 
 def _spawn(spec: ShellHookSpec, stdin_json: str) -> Dict[str, Any]:
@@ -465,20 +590,28 @@ def _make_callback(spec: ShellHookSpec) -> Callable[..., Optional[Dict[str, Any]
 
 def _serialize_payload(event: str, kwargs: Dict[str, Any]) -> str:
     """Render the stdin JSON payload.  Unserialisable values are
-    stringified via ``default=str`` rather than dropped."""
-    extras = {k: v for k, v in kwargs.items() if k not in _TOP_LEVEL_PAYLOAD_KEYS}
-    try:
-        cwd = str(Path.cwd())
-    except OSError:
-        cwd = ""
-    payload = {
-        "hook_event_name": event,
-        "tool_name": kwargs.get("tool_name"),
-        "tool_input": kwargs.get("args") if isinstance(kwargs.get("args"), dict) else None,
-        "session_id": kwargs.get("session_id") or kwargs.get("parent_session_id") or "",
-        "cwd": cwd,
-        "extra": extras,
-    }
+    stringified via ``default=str`` rather than dropped.
+
+    ``on_session_finalize`` events use the canonical payload builder to
+    ensure every hook consumer receives a stable set of fields.  All
+    other events use the legacy general-purpose serializer.
+    """
+    if event == "on_session_finalize":
+        payload = _build_session_finalize_payload(kwargs)
+    else:
+        extras = {k: v for k, v in kwargs.items() if k not in _TOP_LEVEL_PAYLOAD_KEYS}
+        try:
+            cwd = str(Path.cwd())
+        except OSError:
+            cwd = ""
+        payload = {
+            "hook_event_name": event,
+            "tool_name": kwargs.get("tool_name"),
+            "tool_input": kwargs.get("args") if isinstance(kwargs.get("args"), dict) else None,
+            "session_id": kwargs.get("session_id") or kwargs.get("parent_session_id") or "",
+            "cwd": cwd,
+            "extra": extras,
+        }
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 

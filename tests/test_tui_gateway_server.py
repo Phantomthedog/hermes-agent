@@ -864,7 +864,7 @@ def test_session_close_commits_memory_and_fires_finalize_hook(monkeypatch):
     monkeypatch.setattr(
         server,
         "_notify_session_boundary",
-        lambda event, session_id: calls["hooks"].append((event, session_id)),
+        lambda event, session_id, **kw: calls["hooks"].append((event, session_id)),
     )
 
     try:
@@ -5700,7 +5700,7 @@ def test_resumed_session_can_be_finalized_again(monkeypatch):
     monkeypatch.setattr(
         server,
         "_notify_session_boundary",
-        lambda event, session_id: finalized_events.append((event, session_id)),
+        lambda event, session_id, **kw: finalized_events.append((event, session_id)),
     )
 
     now = time.time()
@@ -5786,7 +5786,7 @@ def test_prompt_submit_clears_finalized_flag(monkeypatch):
     monkeypatch.setattr(
         server,
         "_notify_session_boundary",
-        lambda event, session_id: finalized_events.append((event, session_id)),
+        lambda event, session_id, **kw: finalized_events.append((event, session_id)),
     )
 
     session = _session(
