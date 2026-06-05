@@ -4829,6 +4829,36 @@ def run_conversation(
     except Exception as exc:
         logger.warning("on_session_end hook failed: %s", exc)
 
+    # Auto-generate session title after first exchange (synchronous).
+    # Clear the auxiliary client cache first so discovery falls through
+    # to a working provider chain rather than reusing a stale client.
+    if final_response and agent._session_db and agent.session_id:
+        try:
+            from agent.title_generator import auto_title_session
+
+            try:
+                from agent import auxiliary_client as _ac
+                _ac._client_cache.clear()
+            except Exception:
+                pass
+
+            def _on_title(title: str) -> None:
+                """Push session title to terminal tab when generated."""
+                try:
+                    from agent import terminal_status
+                    terminal_status.set_session_title(title)
+                except Exception:
+                    pass  # terminal_status not available
+
+            auto_title_session(
+                agent._session_db,
+                agent.session_id,
+                original_user_message,
+                final_response,
+                title_callback=_on_title,
+            )
+        except Exception:
+            pass  # Title generation is best-effort
     return result
 
 

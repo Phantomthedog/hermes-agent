@@ -178,6 +178,7 @@ export interface ComposerState {
 export interface UseComposerStateOptions {
   gw: GatewayClient
   onClipboardPaste: (quiet?: boolean) => Promise<void> | void
+  onClipboardTextReadError?: (message: string) => void
   onImageAttached?: (info: ImageAttachResponse) => void
   submitRef: MutableRefObject<(value: string) => void>
 }

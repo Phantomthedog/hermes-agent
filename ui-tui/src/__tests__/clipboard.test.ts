@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { isUsableClipboardText, readClipboardText, writeClipboardText } from '../lib/clipboard.js'
+import {
+  checkClipboardReadResult,
+  isUsableClipboardText,
+  readClipboardText,
+  writeClipboardText
+} from '../lib/clipboard.js'
+
+const EXPECTED_OPTS = {
+  encoding: 'utf8',
+  maxBuffer: 64 * 1024 * 1024,
+  timeout: 5000,
+  windowsHide: true
+}
 
 describe('readClipboardText', () => {
   it('reads text from pbpaste on macOS', async () => {
@@ -10,7 +22,7 @@ describe('readClipboardText', () => {
     expect(run).toHaveBeenCalledWith(
       'pbpaste',
       [],
-      expect.objectContaining({ encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, windowsHide: true })
+      expect.objectContaining(EXPECTED_OPTS)
     )
   })
 
@@ -21,7 +33,7 @@ describe('readClipboardText', () => {
     expect(run).toHaveBeenCalledWith(
       'powershell',
       ['-NoProfile', '-NonInteractive', '-Command', 'Get-Clipboard -Raw'],
-      expect.objectContaining({ encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, windowsHide: true })
+      expect.objectContaining(EXPECTED_OPTS)
     )
   })
 
@@ -34,7 +46,7 @@ describe('readClipboardText', () => {
     expect(run).toHaveBeenCalledWith(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', 'Get-Clipboard -Raw'],
-      expect.objectContaining({ encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, windowsHide: true })
+      expect.objectContaining(EXPECTED_OPTS)
     )
   })
 
@@ -47,7 +59,7 @@ describe('readClipboardText', () => {
     expect(run).toHaveBeenCalledWith(
       'wl-paste',
       ['--type', 'text'],
-      expect.objectContaining({ encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, windowsHide: true })
+      expect.objectContaining(EXPECTED_OPTS)
     )
   })
 
@@ -64,13 +76,13 @@ describe('readClipboardText', () => {
       1,
       'wl-paste',
       ['--type', 'text'],
-      expect.objectContaining({ encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, windowsHide: true })
+      expect.objectContaining(EXPECTED_OPTS)
     )
     expect(run).toHaveBeenNthCalledWith(
       2,
       'xclip',
       ['-selection', 'clipboard', '-out'],
-      expect.objectContaining({ encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, windowsHide: true })
+      expect.objectContaining(EXPECTED_OPTS)
     )
   })
 
@@ -80,6 +92,101 @@ describe('readClipboardText', () => {
     await expect(
       readClipboardText('linux', run, { WAYLAND_DISPLAY: 'wayland-1' } as NodeJS.ProcessEnv)
     ).resolves.toBeNull()
+  })
+
+  it('populates hardErrors on timeout (killed=true)', async () => {
+    const run = vi.fn().mockRejectedValue({ killed: true, message: 'process timed out', code: 'ETIMEOUT' })
+    const errors: string[] = []
+
+    const result = await readClipboardText('linux', run, { WSL_INTEROP: '/tmp/socket' } as NodeJS.ProcessEnv, errors)
+
+    expect(result).toBeNull()
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors[0]).toContain('powershell.exe')
+    expect(errors[0]).toContain('process timed out')
+  })
+
+  it('populates hardErrors on maxBuffer exceeded', async () => {
+    const run = vi.fn().mockRejectedValue({ killed: true, code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER', message: 'maxBuffer exceeded' })
+    const errors: string[] = []
+
+    const result = await readClipboardText('linux', run, { WSL_INTEROP: '/tmp/socket' } as NodeJS.ProcessEnv, errors)
+
+    expect(result).toBeNull()
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors[0]).toContain('powershell.exe')
+    expect(errors[0]).toContain('maxBuffer exceeded')
+  })
+
+  it('does not populate hardErrors on soft failures (command not found)', async () => {
+    const run = vi.fn().mockRejectedValue({ code: 'ENOENT', message: 'command not found' })
+    const errors: string[] = []
+
+    // On Linux without WSL/WAYLAND, only xclip/xsel are tried
+    const result = await readClipboardText('linux', run, {}, errors)
+
+    expect(result).toBeNull()
+    expect(errors).toEqual([])
+  })
+
+  it('does not populate hardErrors on normal successful read', async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: 'hello\n' })
+    const errors: string[] = []
+
+    const result = await readClipboardText('linux', run, { WSL_INTEROP: '/tmp/socket' } as NodeJS.ProcessEnv, errors)
+
+    expect(result).toBe('hello\n')
+    expect(errors).toEqual([])
+  })
+
+  it('falls through backends after a hard error (still logs)', async () => {
+    // First backend (powershell.exe) has a hard error, second (xclip) has a soft error
+    const run = vi
+      .fn()
+      .mockRejectedValueOnce({ killed: true, message: 'timeout', code: 'ETIMEOUT' })
+      .mockRejectedValueOnce({ code: 'ENOENT', message: 'not found' })
+    const errors: string[] = []
+
+    const result = await readClipboardText('linux', run, { WSL_INTEROP: '/tmp/socket' } as NodeJS.ProcessEnv, errors)
+
+    expect(result).toBeNull()
+    expect(errors.length).toBe(1) // Only the hard error from powershell.exe
+    expect(errors[0]).toContain('powershell.exe')
+  })
+})
+
+describe('checkClipboardReadResult', () => {
+  it('returns canPaste:true for usable text regardless of hardErrors', () => {
+    expect(checkClipboardReadResult('hello', [])).toEqual({ canPaste: true })
+    expect(checkClipboardReadResult('hello', ['something failed'])).toEqual({ canPaste: true })
+  })
+
+  it('returns canPaste:false + message when null text and hardErrors exist', () => {
+    const result = checkClipboardReadResult(null, ['[powershell.exe] process failed'])
+    expect(result).toEqual({
+      canPaste: false,
+      message: expect.stringContaining('Could not read text from clipboard')
+    })
+  })
+
+  it('returns canPaste:false with no message when null text and no hardErrors', () => {
+    const result = checkClipboardReadResult(null, [])
+    expect(result).toEqual({ canPaste: false })
+  })
+
+  it('returns canPaste:false with no message for empty string and no hardErrors', () => {
+    const result = checkClipboardReadResult('', [])
+    expect(result).toEqual({ canPaste: false })
+  })
+
+  it('prefers hardErrors over empty text — shows message even when text is present but unusable', () => {
+    // Binary-like text with null bytes is not usable
+    const binaryText = 'PNG\x00\x01\x02\x03IHDR'
+    const result = checkClipboardReadResult(binaryText, ['[powershell.exe] process failed'])
+    expect(result).toEqual({
+      canPaste: false,
+      message: expect.stringContaining('Could not read text from clipboard')
+    })
   })
 })
 
@@ -94,7 +201,7 @@ describe('isUsableClipboardText', () => {
   })
 
   it('rejects binary-looking clipboard payloads', () => {
-    expect(isUsableClipboardText('PNG\u0000\u0001\u0002\u0003IHDR')).toBe(false)
+    expect(isUsableClipboardText('PNG\x00\x01\x02\x03IHDR')).toBe(false)
     expect(isUsableClipboardText('TIFF\ufffd\ufffd\ufffdmetadata')).toBe(false)
   })
 })

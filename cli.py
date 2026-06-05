@@ -173,6 +173,7 @@ from hermes_cli.browser_connect import (
     try_launch_chrome_debug,
 )
 from hermes_cli.env_loader import load_hermes_dotenv
+from agent import terminal_status as _terminal_status
 from utils import base_url_host_matches
 
 _hermes_home = get_hermes_home()
@@ -7166,7 +7167,11 @@ class HermesCLI:
         except Exception:
             pass
 
-        # Create the new session with parent link
+        # Create the new session with parent link.
+        # Persist a stable ``_branched_from`` marker in model_config so
+        # list_sessions_rich() can keep the branch visible in /resume and
+        # /sessions even after the parent is reopened and re-ended with a
+        # different end_reason (e.g. tui_shutdown overwriting 'branched').
         try:
             self._session_db.create_session(
                 session_id=new_session_id,
@@ -7175,6 +7180,7 @@ class HermesCLI:
                 model_config={
                     "max_iterations": self.max_turns,
                     "reasoning_config": self.reasoning_config,
+                    "_branched_from": parent_session_id,
                 },
                 parent_session_id=parent_session_id,
             )
@@ -11689,6 +11695,9 @@ class HermesCLI:
         # Trigger prompt_toolkit repaint from this (non-main) thread
         self._invalidate()
 
+        # Terminal status — switch from working to question-waiting state
+        _terminal_status.ask_question()
+
         # Poll for the user's response.  The countdown in the hint line
         # updates on each invalidate — but frequent repaints cause visible
         # flicker in some terminals (Kitty, ghostty).  We only refresh the
@@ -11703,6 +11712,7 @@ class HermesCLI:
             try:
                 result = response_queue.get(timeout=1)
                 self._clarify_deadline = 0
+                _terminal_status.start_working("Working")
                 return result
             except queue.Empty:
                 remaining = self._clarify_deadline - _time.monotonic()
@@ -11723,6 +11733,7 @@ class HermesCLI:
         self._clarify_deadline = 0
         self._invalidate()
         _cprint(f"\n{_DIM}(clarify timed out after {timeout}s — agent will decide){_RST}")
+        _terminal_status.start_working("Working")
         return (
             "The user did not provide a response within the time limit. "
             "Use your best judgement to make the choice and proceed."
@@ -12142,6 +12153,9 @@ class HermesCLI:
         ):
             return None
         
+        # Terminal status — show working state for this turn
+        _terminal_status.start_working("Working")
+
         # Route image attachments based on the active model's vision capability.
         # "native" → pass pixels as OpenAI-style content parts (adapters
         #            translate for Anthropic/Gemini/Bedrock).
@@ -12537,35 +12551,6 @@ class HermesCLI:
             # Get the final response
             response = result.get("final_response", "") if result else ""
 
-            # Auto-generate session title after first exchange (non-blocking)
-            if response and result and not result.get("failed") and not result.get("partial"):
-                try:
-                    from agent.title_generator import maybe_auto_title
-                    # Route title-generation failures through the agent's
-                    # user-visible warning channel so a depleted auxiliary
-                    # provider doesn't silently leave sessions untitled
-                    # (issue #15775).
-                    _title_failure_cb = getattr(
-                        self.agent, "_emit_auxiliary_failure", None
-                    ) if self.agent else None
-                    maybe_auto_title(
-                        self._session_db,
-                        self.session_id,
-                        message,
-                        response,
-                        self.conversation_history,
-                        failure_callback=_title_failure_cb,
-                        main_runtime={
-                            "model": self.model,
-                            "provider": self.provider,
-                            "base_url": self.base_url,
-                            "api_key": self.api_key,
-                            "api_mode": self.api_mode,
-                        },
-                    )
-                except Exception:
-                    pass
-
             # Handle failed or partial results (e.g., non-retryable errors, rate limits,
             # truncated output, invalid tool calls). Both "failed" and "partial" with
             # an empty final_response mean the agent couldn't produce a usable answer.
@@ -12707,9 +12692,20 @@ class HermesCLI:
                 print(f"\n⏩ Delivering leftover /steer as next turn: '{preview}'")
                 self._pending_input.put(_leftover_steer)
 
+            # Terminal status — show completion state based on result
+            if result:
+                if _interrupted_this_turn:
+                    _terminal_status.clear()
+                elif result.get("failed") or result.get("partial"):
+                    _terminal_status.error()
+                else:
+                    _terminal_status.success()
+                    time.sleep(0.4)
+
             return response
             
         except Exception as e:
+            _terminal_status.error()
             print(f"Error: {e}")
             return None
         finally:
