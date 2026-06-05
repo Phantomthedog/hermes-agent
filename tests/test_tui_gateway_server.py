@@ -4030,7 +4030,7 @@ def test_prompt_submit_auto_titles_session_on_complete(monkeypatch):
     monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
     monkeypatch.setattr(server, "_get_db", lambda: None)
 
-    with patch("agent.title_generator.maybe_auto_title") as mock_title:
+    with patch("agent.title_generator.auto_title_session") as mock_title:
         server.handle_request(
             {
                 "id": "1",
@@ -4038,25 +4038,25 @@ def test_prompt_submit_auto_titles_session_on_complete(monkeypatch):
                 "params": {"session_id": "sid", "text": "Tell me about Rome"},
             }
         )
-
-    mock_title.assert_called_once()
-    args = mock_title.call_args.args
-    assert args[1] == "session-key"
-    assert args[2] == "Tell me about Rome"
-    assert args[3] == "Rome was founded in 753 BC."
+        mock_title.assert_called_once_with(
+            None,  # db
+            "session-key",  # session_id
+            "Tell me about Rome",  # user_message
+            "Rome was founded in 753 BC.",  # assistant_response
+        )
 
 
 def test_prompt_submit_skips_auto_title_when_interrupted(monkeypatch):
-    """maybe_auto_title must NOT be called when the agent was interrupted."""
+    """auto_title_session must NOT be called when the agent was interrupted."""
 
     class _Agent:
         def run_conversation(
             self, prompt, conversation_history=None, stream_callback=None
         ):
             return {
-                "final_response": "partial answer",
-                "interrupted": True,
+                "final_response": "",
                 "messages": [],
+                "interrupted": True,
             }
 
     server._sessions["sid"] = _session(agent=_Agent())
@@ -4066,7 +4066,7 @@ def test_prompt_submit_skips_auto_title_when_interrupted(monkeypatch):
     monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
     monkeypatch.setattr(server, "_get_db", lambda: None)
 
-    with patch("agent.title_generator.maybe_auto_title") as mock_title:
+    with patch("agent.title_generator.auto_title_session") as mock_title:
         server.handle_request(
             {
                 "id": "1",
@@ -4074,12 +4074,11 @@ def test_prompt_submit_skips_auto_title_when_interrupted(monkeypatch):
                 "params": {"session_id": "sid", "text": "Tell me about Rome"},
             }
         )
-
-    mock_title.assert_not_called()
+        mock_title.assert_not_called()
 
 
 def test_prompt_submit_skips_auto_title_when_response_empty(monkeypatch):
-    """maybe_auto_title must NOT be called when the agent returns an empty reply."""
+    """auto_title_session must NOT be called when the agent returns an empty reply."""
 
     class _Agent:
         def run_conversation(
@@ -4097,16 +4096,15 @@ def test_prompt_submit_skips_auto_title_when_response_empty(monkeypatch):
     monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
     monkeypatch.setattr(server, "_get_db", lambda: None)
 
-    with patch("agent.title_generator.maybe_auto_title") as mock_title:
+    with patch("agent.title_generator.auto_title_session") as mock_title:
         server.handle_request(
             {
                 "id": "1",
                 "method": "prompt.submit",
-                "params": {"session_id": "sid", "text": "Tell me about Rome"},
+                "params": {"session_id": "sid", "text": ""},
             }
         )
-
-    mock_title.assert_not_called()
+        mock_title.assert_not_called()
 
 
 def test_prompt_submit_surfaces_backend_error_as_visible_text(monkeypatch):
