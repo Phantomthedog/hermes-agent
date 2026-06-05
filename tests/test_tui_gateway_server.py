@@ -6,7 +6,7 @@ import time
 import types
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import pytest
 
@@ -4110,6 +4110,7 @@ def test_prompt_submit_auto_titles_session_on_complete(monkeypatch):
             "session-key",  # session_id
             "Tell me about Rome",  # user_message
             "Rome was founded in 753 BC.",  # assistant_response
+            title_callback=ANY,
         )
 
 
