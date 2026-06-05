@@ -58,6 +58,7 @@ def _open_tty() -> int | None:
             fd = int(fd_str)
             # Verify it's writable
             os.write(fd, b"")
+            logger.debug("terminal_status: using HERMES_TERMINAL_FD=%d", fd)
             return fd
     except (OSError, ValueError, TypeError):
         pass

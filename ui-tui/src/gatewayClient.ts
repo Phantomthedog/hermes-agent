@@ -334,8 +334,24 @@ export class GatewayClient extends EventEmitter {
     const pyPath = env.PYTHONPATH?.trim()
 
     env.PYTHONPATH = pyPath ? `${root}${delimiter}${pyPath}` : root
+
+    // Terminal status fd passthrough: carry the real terminal fd from
+    // Python _launch_tui() into the gateway subprocess so OSC escape
+    // sequences can update the Windows Terminal tab title even when
+    // the gateway's own stdout/stderr are piped into Node.
+    const terminalFdRaw = process.env.HERMES_TERMINAL_FD
+    const terminalFd = terminalFdRaw ? Number.parseInt(terminalFdRaw, 10) : undefined
+    const stdio: any[] = ['pipe', 'pipe', 'pipe']
+    if (Number.isInteger(terminalFd) && (terminalFd as number) >= 3) {
+      // Map the parent's fd into child fd 3, then re-write the env var
+      // so the child reads the right number.
+      stdio.push(terminalFd)
+      delete env.HERMES_TERMINAL_FD  // remove stale value first
+      env.HERMES_TERMINAL_FD = '3'
+    }
+
     this.startReadyTimer(python, cwd)
-    this.proc = spawn(python, ['-m', 'tui_gateway.entry'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+    this.proc = spawn(python, ['-m', 'tui_gateway.entry'], { cwd, env, stdio })
     this.lifecycle(`[lifecycle] spawned gateway child ${describeChild(this.proc)} python=${python} cwd=${cwd}`)
 
     this.stdoutRl = createInterface({ input: this.proc.stdout! })
