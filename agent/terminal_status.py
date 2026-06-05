@@ -34,15 +34,52 @@ logger = logging.getLogger(__name__)
 # --- Output stream ---
 
 _TTY_FD: int | None = None  # fd for /dev/tty (3 or higher), None if unavailable
+"""Cached fd for terminal output. Initialized lazily, preferring (in order):
+   1. HERMES_TERMINAL_FD env var (passed from parent process, for gateway mode)
+   2. /dev/tty (controlling terminal, works in normal CLI mode)
+   3. sys.__stdout__ (last resort, for non-tty environments)
+"""
 
 
 def _open_tty() -> int | None:
-    """Try to open /dev/tty for direct terminal output.  Returns fd or None."""
+    """Try to open a writable fd to the real terminal.
+
+    Priority:
+      1. ``HERMES_TERMINAL_FD`` env var — a dup'd fd passed from the parent
+         process (used when the gateway subprocess has no direct tty access).
+      2. /dev/tty — the controlling terminal.
+      3. sys.__stdout__ — fallback fd.
+    Returns fd or None.
+    """
+    # 1. Try the inherited fd from parent (gateway mode, WSL without /dev/tty)
+    try:
+        fd_str = os.environ.get("HERMES_TERMINAL_FD")
+        if fd_str:
+            fd = int(fd_str)
+            # Verify it's writable
+            os.write(fd, b"")
+            return fd
+    except (OSError, ValueError, TypeError):
+        pass
+
+    # 2. Try /dev/tty (works in normal CLI mode on real terminals)
     try:
         fd = os.open("/dev/tty", os.O_WRONLY)
         return fd
     except OSError:
-        return None
+        pass
+
+    # 3. Fallback: sys.__stdout__ fd (last resort)
+    try:
+        if sys.__stdout__ is not None:
+            fd = sys.__stdout__.fileno()
+            # Verify it's writable
+            os.write(fd, b"")
+            return fd
+    except (OSError, AttributeError):
+        pass
+
+    return None
 
 
 def _write(data: bytes) -> None:

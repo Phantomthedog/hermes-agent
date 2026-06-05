@@ -1823,6 +1823,21 @@ def _launch_tui(
 
     argv, cwd = _make_tui_argv(tui_dir, tui_dev)
     code: Optional[int] = None
+
+    # Terminal status: save a reference to the real terminal stdout so the
+    # Python gateway (spawned by Node with piped stdio) can still emit OSC
+    # sequences to the Windows Terminal tab.  os.dup() keeps the fd
+    # inheritable by default so both Node and the gateway child see it.
+    import fcntl
+
+    try:
+        _term_fd = os.dup(1)
+        flags = fcntl.fcntl(_term_fd, fcntl.F_GETFD)
+        fcntl.fcntl(_term_fd, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
+        env["HERMES_TERMINAL_FD"] = str(_term_fd)
+    except Exception:
+        pass
+
     try:
         try:
             code = subprocess.call(argv, cwd=str(cwd), env=env)

@@ -29,6 +29,51 @@ from tui_gateway.transport import (
 
 logger = logging.getLogger(__name__)
 
+# ── Terminal status (tab title / progress) ────────────────────────────
+try:
+    from agent import terminal_status as _terminal_status
+except Exception:
+    _terminal_status = None
+
+
+def _ts_start() -> None:
+    """Set terminal tab to working state."""
+    try:
+        if _terminal_status:
+            _terminal_status.start_working("Working")
+    except Exception:
+        pass
+
+
+def _ts_success() -> None:
+    """Set terminal tab to success state."""
+    try:
+        if _terminal_status:
+            _terminal_status.success()
+    except Exception:
+        pass
+
+
+def _ts_error() -> None:
+    """Set terminal tab to error state."""
+    try:
+        if _terminal_status:
+            _terminal_status.error()
+    except Exception:
+        pass
+
+
+def _ts_ask() -> None:
+    """Set terminal tab to question-waiting state."""
+    try:
+        if _terminal_status:
+            _terminal_status.ask_question()
+    except Exception:
+        pass
+
+
+# ── End terminal status helpers ───────────────────────────────────────
+
 _hermes_home = get_hermes_home()
 load_hermes_dotenv(
     hermes_home=_hermes_home, project_env=Path(__file__).parent.parent / ".env"
@@ -275,12 +320,22 @@ def _load_busy_input_mode() -> str:
     return raw if raw in {"queue", "steer", "interrupt"} else "interrupt"
 
 
-def _notify_session_boundary(event_type: str, session_id: str | None) -> None:
+def _notify_session_boundary(
+    event_type: str,
+    session_id: str | None,
+    *,
+    trigger: str = "unknown",
+) -> None:
     """Fire session lifecycle hooks with CLI parity."""
     try:
         from hermes_cli.plugins import invoke_hook as _invoke_hook
 
-        _invoke_hook(event_type, session_id=session_id, platform="tui")
+        _invoke_hook(
+            event_type,
+            session_id=session_id,
+            platform="tui",
+            trigger=trigger,
+        )
     except Exception:
         pass
 
@@ -309,7 +364,11 @@ def _finalize_session(session: dict | None, end_reason: str = "tui_close") -> No
 
     session_key = session.get("session_key")
     session_id = getattr(agent, "session_id", None) or session_key
-    _notify_session_boundary("on_session_finalize", session_id)
+    _notify_session_boundary(
+        "on_session_finalize",
+        session_id,
+        trigger=end_reason or "tui_close",
+    )
 
     # Mark session ended in DB so it doesn't linger as a ghost row in /resume.
     # Use session_id (from agent.session_id) not session_key — after compression,
@@ -2093,8 +2152,10 @@ def _agent_cbs(sid: str) -> dict:
         "status_callback": lambda kind, text=None: _status_update(
             sid, str(kind), None if text is None else str(text)
         ),
-        "clarify_callback": lambda q, c: _block(
-            "clarify.request", sid, {"question": q, "choices": c}
+        "clarify_callback": lambda q, c: (
+            _ts_ask() or _block(
+                "clarify.request", sid, {"question": q, "choices": c}
+            )
         ),
     }
 
@@ -4538,6 +4599,8 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                     run_kwargs["task_id"] = session["session_key"]
             except (TypeError, ValueError):
                 pass
+            # Terminal status — agent is now working on this turn
+            _ts_start()
             result = agent.run_conversation(run_message, **run_kwargs)
 
             last_reasoning = None
@@ -4615,6 +4678,8 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             with session["history_lock"]:
                 _clear_inflight_turn(session)
             _emit("message.complete", sid, payload)
+            # Terminal status — turn completed successfully
+            _ts_success()
 
             # ── /goal continuation (Ralph-style loop) ─────────────────
             # After every TUI turn, if a /goal is active, ask the judge
@@ -4691,14 +4756,13 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 and text.strip()
             ):
                 try:
-                    from agent.title_generator import maybe_auto_title
+                    from agent.title_generator import auto_title_session as _ats
 
-                    maybe_auto_title(
+                    _ats(
                         _get_db(),
                         session.get("session_key") or sid,
                         text,
                         raw,
-                        session.get("history", []),
                     )
                 except Exception:
                     pass
@@ -4725,6 +4789,8 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 except Exception as e:
                     logger.warning("voice TTS dispatch failed: %s", e)
         except Exception as e:
+            # Terminal status — turn failed
+            _ts_error()
             import traceback
 
             trace = traceback.format_exc()
