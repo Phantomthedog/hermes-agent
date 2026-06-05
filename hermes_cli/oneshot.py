@@ -177,6 +177,10 @@ def run_oneshot(
     real_stderr = sys.stderr
     devnull = open(os.devnull, "w", encoding="utf-8")
 
+    # Terminal status — show working state (goes to /dev/tty, unaffected by redirect)
+    from agent import terminal_status as _oneshot_ts
+    _oneshot_ts.start_working("Working")
+
     response: Optional[str] = None
     failure: BaseException | None = None
     try:
@@ -197,6 +201,7 @@ def run_oneshot(
                 # traceback that the caller never sees. A silent exit in a
                 # cron / SSH / subprocess context is the worst failure mode.
                 # See #30623.
+                _oneshot_ts.error()
                 failure = exc
     finally:
         try:
@@ -219,6 +224,7 @@ def run_oneshot(
         return 1
 
     assert response is not None  # narrowed by the empty-response guard above
+    _oneshot_ts.success()
     real_stdout.write(response)
     if not response.endswith("\n"):
         real_stdout.write("\n")
