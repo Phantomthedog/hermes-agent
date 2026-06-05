@@ -68,6 +68,7 @@ Usage:
 
 import json
 import logging
+import threading
 
 from hermes_constants import get_hermes_home, display_hermes_home
 import os
@@ -106,6 +107,101 @@ _REMOTE_ENV_BACKENDS = frozenset(
     {"docker", "singularity", "modal", "ssh", "daytona"}
 )
 _secret_capture_callback = None
+
+
+# ---------------------------------------------------------------------------
+# CuratorSkillViewDeduper — prevents the curator LLM from repeatedly calling
+# skill_view on the same skill during a single consolidation pass.
+#
+# The curator's forked AIAgent sometimes loops calling skill_view on the
+# same skill (notably tailscale-setup) until the same_tool_failure_halt
+# guardrail fires, wasting tokens and producing no consolidation actions.
+# This per-run guard tracks view calls and returns a synthetic "already
+# viewed" result after 2 views per skill.
+#
+# Activated/deactivated via activate/deactivate functions below. Only
+# scoped to curator review threads — normal agent sessions are unaffected.
+# ---------------------------------------------------------------------------
+_MAX_SKILL_VIEWS_PER_SKILL = 2
+
+
+class _CuratorSkillViewDeduper:
+    """Per-run skill_view call tracker for curator LLM consolidation.
+
+    Thread-local so multiple curator runs on different threads don't interfere.
+    """
+
+    def __init__(self) -> None:
+        self._local = threading.local()
+
+    def activate(self) -> None:
+        """Enable dedup tracking for the current thread."""
+        self._local.active = True
+        self._local.counts = {}
+
+    def deactivate(self) -> None:
+        """Disable dedup tracking and clear counters."""
+        self._local.active = False
+        self._local.counts = {}
+
+    @property
+    def is_active(self) -> bool:
+        return bool(getattr(self._local, "active", False))
+
+    def should_skip(self, skill_name: str) -> bool:
+        """Check if *skill_name* has reached the view limit.
+
+        Returns True if the skill was already viewed *MAX_SKILL_VIEWS_PER_SKILL*
+        times. Increments the counter on each call, call BEFORE the real view.
+        """
+        if not self.is_active:
+            return False
+        counts: Dict[str, int] = self._local.counts
+        prior = counts.get(skill_name, 0)
+        counts[skill_name] = prior + 1
+        if prior >= _MAX_SKILL_VIEWS_PER_SKILL:
+            logger.info(
+                "Curator deduper SKIPPED_DUPLICATE_SKILL_VIEW: %s "
+                "already viewed %d time(s) in this pass",
+                skill_name, prior,
+            )
+            return True
+        return False
+
+    def skipped_result(self, skill_name: str) -> str:
+        """Return a synthetic successful tool result for a skipped view."""
+        return json.dumps({
+            "success": True,
+            "skipped": True,
+            "message": (
+                f"SKIPPED_DUPLICATE_SKILL_VIEW: {skill_name} was already viewed "
+                f"{_MAX_SKILL_VIEWS_PER_SKILL} times in this curator pass. "
+                "Use the already-loaded content, choose another skill, or finish."
+            ),
+        }, ensure_ascii=False)
+
+
+# Singleton — deduper state is per-thread via threading.local() inside.
+_curator_skill_view_deduper = _CuratorSkillViewDeduper()
+
+
+def curator_activate_skill_view_deduper() -> None:
+    """Enable skill_view deduplication for the current thread.
+
+    Called by the curator's ``_run_llm_review`` before spawning the review
+    agent.  Normal (non-curator) sessions never call this and are unaffected.
+    """
+    _curator_skill_view_deduper.activate()
+
+
+def curator_deactivate_skill_view_deduper() -> None:
+    """Disable skill_view deduplication and clear per-thread state."""
+    _curator_skill_view_deduper.deactivate()
+
+
+def curator_skill_view_deduper_is_active() -> bool:
+    """Check whether deduplication is active on the current thread."""
+    return _curator_skill_view_deduper.is_active
 
 
 def load_env() -> Dict[str, str]:
@@ -847,6 +943,13 @@ def skill_view(
         JSON string with skill content or error message
     """
     try:
+        # Curator deduplication guard — skip if this skill was already
+        # viewed N times in this curator consolidation pass.  Returns a
+        # synthetic "success" so the LLM moves forward without tripping
+        # the same_tool_failure_halt guardrail.
+        if _curator_skill_view_deduper.should_skip(name):
+            return _curator_skill_view_deduper.skipped_result(name)
+
         local_category_name: str | None = None
         # ── Qualified name dispatch (plugin skills) ──────────────────
         # Names containing ':' are routed to the plugin skill registry.
