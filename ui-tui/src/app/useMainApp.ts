@@ -263,6 +263,7 @@ export function useMainApp(gw: GatewayClient) {
   const composer = useComposerState({
     gw,
     onClipboardPaste: quiet => clipboardPasteRef.current(quiet),
+    onClipboardTextReadError: msg => sys(msg),
     onImageAttached: info => {
       sys(attachedImageNotice(info))
     },

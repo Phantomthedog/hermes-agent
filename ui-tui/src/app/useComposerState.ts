@@ -12,7 +12,7 @@ import type { ImageAttachResponse, InputDetectDropResponse } from '../gatewayTyp
 import { useCompletion } from '../hooks/useCompletion.js'
 import { useInputHistory } from '../hooks/useInputHistory.js'
 import { useQueue } from '../hooks/useQueue.js'
-import { isUsableClipboardText, readClipboardText } from '../lib/clipboard.js'
+import { checkClipboardReadResult, isUsableClipboardText, readClipboardText } from '../lib/clipboard.js'
 import { resolveEditor } from '../lib/editor.js'
 import { readOsc52Clipboard } from '../lib/osc52.js'
 import { isRemoteShellSession } from '../lib/terminalSetup.js'
@@ -100,6 +100,7 @@ export function looksLikeDroppedPath(text: string): boolean {
 export function useComposerState({
   gw,
   onClipboardPaste,
+  onClipboardTextReadError,
   onImageAttached,
   submitRef
 }: UseComposerStateOptions): UseComposerStateResult {
@@ -234,6 +235,7 @@ export function useComposerState({
     }: PasteEvent): MaybePromise<null | { cursor: number; value: string }> => {
       if (hotkey) {
         const preferOsc52 = isRemoteShellSession(process.env)
+        const hardErrors: string[] = []
 
         const readPreferredText = preferOsc52
           ? readOsc52Clipboard(querier).then(async osc52Text => {
@@ -241,9 +243,9 @@ export function useComposerState({
                 return osc52Text
               }
 
-              return readClipboardText()
+              return readClipboardText(process.platform, undefined, process.env, hardErrors)
             })
-          : readClipboardText().then(async clipText => {
+          : readClipboardText(process.platform, undefined, process.env, hardErrors).then(async clipText => {
               if (isUsableClipboardText(clipText)) {
                 return clipText
               }
@@ -252,8 +254,16 @@ export function useComposerState({
             })
 
         return readPreferredText.then(async preferredText => {
-          if (isUsableClipboardText(preferredText)) {
-            return handleResolvedPaste({ bracketed: false, cursor, text: preferredText, value })
+          const verdict = checkClipboardReadResult(preferredText, hardErrors)
+
+          if (verdict.canPaste) {
+            return handleResolvedPaste({ bracketed: false, cursor, text: preferredText!, value })
+          }
+
+          if (verdict.message) {
+            onClipboardTextReadError?.(verdict.message)
+
+            return null
           }
 
           void onClipboardPaste(true)

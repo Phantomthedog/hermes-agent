@@ -2,7 +2,8 @@ import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
-const CLIPBOARD_MAX_BUFFER = 4 * 1024 * 1024
+const CLIPBOARD_MAX_BUFFER = 64 * 1024 * 1024
+const CLIPBOARD_TIMEOUT_MS = 5000
 const POWERSHELL_ARGS = ['-NoProfile', '-NonInteractive', '-Command', 'Get-Clipboard -Raw'] as const
 
 type ClipboardRun = typeof execFileAsync
@@ -28,6 +29,31 @@ export function isUsableClipboardText(text: null | string): text is string {
   }
 
   return suspicious <= Math.max(2, Math.floor(text.length * 0.02))
+}
+
+/**
+ * Interpret the result of a clipboard read for the right-click paste path.
+ *
+ * - `canPaste: true` → text is usable, proceed with paste
+ * - `canPaste: false, message: string` → text read had a hard failure, show feedback
+ * - `canPaste: false, message: undefined` → clipboard empty / no usable text, stay quiet
+ */
+export function checkClipboardReadResult(
+  text: string | null,
+  hardErrors: string[]
+): { canPaste: true } | { canPaste: false; message?: string } {
+  if (isUsableClipboardText(text)) {
+    return { canPaste: true }
+  }
+
+  if (hardErrors.length > 0) {
+    return {
+      canPaste: false,
+      message: '\u26A0 Could not read text from clipboard. Press Ctrl+V to paste large content.'
+    }
+  }
+
+  return { canPaste: false }
 }
 
 function readClipboardCommands(
@@ -66,25 +92,46 @@ function readClipboardCommands(
  * - WSL: powershell.exe Get-Clipboard -Raw
  * - Linux Wayland: wl-paste --type text
  * - Linux X11: xclip -selection clipboard -out
+ *
+ * @param hardErrors - Optional mutable array. If provided, hard failures
+ *   (timeout, maxBuffer exceeded, process killed) push an error description.
+ *   Callers use this to distinguish "clipboard is empty" from "clipboard read failed".
  */
 export async function readClipboardText(
   platform: NodeJS.Platform = process.platform,
   run: ClipboardRun = execFileAsync,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  hardErrors?: string[]
 ): Promise<string | null> {
   for (const attempt of readClipboardCommands(platform, env)) {
     try {
       const result = await run(attempt.cmd, [...attempt.args], {
         encoding: 'utf8',
         maxBuffer: CLIPBOARD_MAX_BUFFER,
+        timeout: CLIPBOARD_TIMEOUT_MS,
         windowsHide: true
       })
 
       if (typeof result.stdout === 'string') {
         return result.stdout
       }
-    } catch {
-      // Fall through to the next clipboard backend.
+    } catch (e: any) {
+      const isHard = e?.killed || e?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+
+      if (isHard) {
+        const detail = `[${attempt.cmd}] ${e.message ?? e.code ?? 'process killed'}`
+        hardErrors?.push(detail)
+      }
+
+      console.error(
+        '[clipboard] read failed:',
+        JSON.stringify({
+          cmd: attempt.cmd,
+          error: e?.message ?? String(e),
+          code: e?.code ?? null,
+          killed: !!e?.killed
+        })
+      )
     }
   }
 
