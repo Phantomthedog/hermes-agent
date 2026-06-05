@@ -3372,6 +3372,12 @@ def _(rid, params: dict) -> dict:
         return err
     assert session is not None  # _sess_nowait guarantees this when err is None
 
+    # If this session was previously finalized by the idle sweeper, clear the
+    # flag so it can be finalized again after another period of inactivity.
+    # This allows Desktop users to switch back to an idle-finalized session
+    # and keep working, with hooks still firing on subsequent idle timeouts.
+    session.pop("_finalized", None)
+
     return _ok(
         rid,
         _live_session_payload(sid, session, touch=True),
