@@ -559,9 +559,9 @@ if (_hermesScaleRaw) {
   if (Number.isFinite(_parsed) && _parsed >= 0.5 && _parsed <= 4) {
     app.commandLine.appendSwitch('high-dpi-support', '1')
     app.commandLine.appendSwitch('force-device-scale-factor', String(_parsed))
-    rememberLog(`[hermes] desktop scale factor: ${_parsed}`)
+    console.log(`[hermes] desktop scale factor: ${_parsed}`)
   } else {
-    rememberLog(`[hermes] ignoring invalid HERMES_DESKTOP_SCALE value: ${_hermesScaleRaw} (must be 0.5–4)`)
+    console.warn(`[hermes] ignoring invalid HERMES_DESKTOP_SCALE value: ${_hermesScaleRaw} (must be 0.5–4)`)
   }
 }
 
