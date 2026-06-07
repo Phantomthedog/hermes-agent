@@ -62,6 +62,49 @@ def test_session_context_explicit_cwd_for_ephemeral_task(monkeypatch, tmp_path):
         server._clear_session_context(tokens)
 
 
+def test_terminal_task_cwd_local_backend_uses_session_cwd(monkeypatch, tmp_path):
+    """A local terminal backend must keep host-validated session cwd behaviour."""
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("TERMINAL_ENV", "local")
+    monkeypatch.delenv("TERMINAL_CWD", raising=False)
+
+    assert server._terminal_task_cwd({"cwd": str(project)}) == str(project)
+
+
+def test_terminal_task_cwd_ssh_uses_remote_path_unvalidated(monkeypatch):
+    """SSH (non-local) backend: the configured remote cwd is used verbatim even
+    though it does not exist on the local host. This is the jonbohz fix — host
+    `isdir()` validation would otherwise discard the remote path and fall back
+    to os.getcwd(), running commands against the wrong machine."""
+    remote = "/home/jonboh/workspace/proj"  # does not exist on this host
+    assert not os.path.isdir(remote)
+    monkeypatch.setenv("TERMINAL_ENV", "ssh")
+    monkeypatch.setenv("TERMINAL_CWD", remote)
+
+    assert server._terminal_task_cwd({"cwd": "/some/host/dir"}) == remote
+
+
+def test_terminal_task_cwd_ssh_falls_back_to_config(monkeypatch):
+    """When TERMINAL_CWD is unset, the SSH path reads terminal.cwd from config."""
+    remote = "/home/jonboh/workspace/from-config"
+    monkeypatch.setenv("TERMINAL_ENV", "ssh")
+    monkeypatch.delenv("TERMINAL_CWD", raising=False)
+    monkeypatch.setattr(server, "_load_cfg", lambda: {"terminal": {"cwd": remote}})
+
+    assert server._terminal_task_cwd({"cwd": "/some/host/dir"}) == remote
+
+
+def test_terminal_task_cwd_ssh_sentinel_cwd_falls_back_to_session(monkeypatch):
+    """Sentinel/auto cwd values are not real remote paths, so the SSH branch
+    must defer to the session cwd rather than registering a meaningless dir."""
+    monkeypatch.setenv("TERMINAL_ENV", "ssh")
+    monkeypatch.setenv("TERMINAL_CWD", "auto")
+    monkeypatch.setattr(server, "_load_cfg", lambda: {"terminal": {"cwd": "."}})
+
+    assert server._terminal_task_cwd({"cwd": "/host/session/dir"}) == "/host/session/dir"
+
+
 class _ChunkyStdout:
     def __init__(self):
         self.parts: list[str] = []
@@ -3579,7 +3622,7 @@ def test_session_create_close_race_does_not_orphan_worker(monkeypatch):
     release_build = threading.Event()
     build_entered = threading.Event()
 
-    def _slow_make_agent(sid, key, session_id=None):
+    def _slow_make_agent(sid, key, session_id=None, session_db=None):
         build_started.set()
         build_entered.set()
         release_build.wait(timeout=3.0)
@@ -3687,7 +3730,7 @@ def test_session_create_no_race_keeps_worker_alive(monkeypatch):
             self.base_url = ""
             self.api_key = ""
 
-    monkeypatch.setattr(server, "_make_agent", lambda sid, key: _FakeAgent())
+    monkeypatch.setattr(server, "_make_agent", lambda sid, key, session_db=None: _FakeAgent())
     monkeypatch.setattr(server, "_SlashWorker", _FakeWorker)
     monkeypatch.setattr(
         server,
@@ -3771,7 +3814,7 @@ def test_session_create_continues_when_state_db_is_unavailable(monkeypatch):
 
     emits = []
 
-    monkeypatch.setattr(server, "_make_agent", lambda sid, key: _FakeAgent())
+    monkeypatch.setattr(server, "_make_agent", lambda sid, key, session_db=None: _FakeAgent())
     monkeypatch.setattr(server, "_SlashWorker", _FakeWorker)
     monkeypatch.setattr(server, "_get_db", lambda: None)
     monkeypatch.setattr(server, "_session_info", lambda _a, *a2: {"model": "x"})
