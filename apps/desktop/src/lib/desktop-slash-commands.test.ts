@@ -6,7 +6,8 @@ import {
   desktopSlashUnavailableMessage,
   filterDesktopCommandsCatalog,
   isDesktopSlashCommand,
-  isDesktopSlashSuggestion
+  isDesktopSlashSuggestion,
+  isModelPickerCommand
 } from './desktop-slash-commands'
 
 describe('desktop slash command curation', () => {
@@ -15,6 +16,7 @@ describe('desktop slash command curation', () => {
     expect(isDesktopSlashSuggestion('/branch')).toBe(true)
     expect(isDesktopSlashSuggestion('/skin')).toBe(true)
     expect(isDesktopSlashSuggestion('/usage')).toBe(true)
+    expect(isDesktopSlashSuggestion('/version')).toBe(true)
     expect(isDesktopSlashSuggestion('/yolo')).toBe(true)
     expect(isDesktopSlashCommand('/yolo')).toBe(true)
   })
@@ -217,5 +219,12 @@ describe('desktop slash command curation', () => {
     expect(isDesktopSlashCommand('/skills')).toBe(false)
     expect(isDesktopSlashCommand('/clear')).toBe(false)
     expect(isDesktopSlashCommand('/quit')).toBe(false)
+  })
+
+  it('flags /model as a picker-owned command so the desktop opens the overlay', () => {
+    expect(isModelPickerCommand('/model')).toBe(true)
+    expect(isModelPickerCommand('/model sonnet')).toBe(true)
+    expect(isModelPickerCommand('/new')).toBe(false)
+    expect(isModelPickerCommand('/skills')).toBe(false)
   })
 })
