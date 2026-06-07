@@ -102,9 +102,9 @@ if (_hermesScaleRaw) {
   if (Number.isFinite(_parsed) && _parsed >= 0.5 && _parsed <= 4) {
     app.commandLine.appendSwitch('high-dpi-support', '1')
     app.commandLine.appendSwitch('force-device-scale-factor', String(_parsed))
-    console.log(`[hermes] desktop scale factor: ${_parsed}`)
+    rememberLog(`[hermes] desktop scale factor: ${_parsed}`)
   } else {
-    console.warn(`[hermes] ignoring invalid HERMES_DESKTOP_SCALE value: ${_hermesScaleRaw} (must be 0.5–4)`)
+    rememberLog(`[hermes] ignoring invalid HERMES_DESKTOP_SCALE value: ${_hermesScaleRaw} (must be 0.5–4)`)
   }
 }
 
@@ -135,14 +135,6 @@ if (REMOTE_DISPLAY_REASON) {
   console.log(
     `[hermes] remote display detected (${REMOTE_DISPLAY_REASON}); disabling GPU hardware acceleration to prevent flicker`
   )
-}
-
-// UI zoom — HERMES_DESKTOP_SCALE overrides the device pixel ratio so the
-// desktop UI renders at a readable size on high-DPI or large displays.
-// Accepts values like 1.0, 1.5, 2.5.  Set by hermes-desktop-big-coder.
-const DESKTOP_SCALE = process.env.HERMES_DESKTOP_SCALE
-if (DESKTOP_SCALE) {
-  app.commandLine.appendSwitch('force-device-scale-factor', DESKTOP_SCALE)
 }
 const SOURCE_REPO_ROOT = path.resolve(APP_ROOT, '../..')
 
