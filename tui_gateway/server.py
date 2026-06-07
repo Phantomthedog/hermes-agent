@@ -2619,6 +2619,15 @@ def _reset_session_agent(sid: str, session: dict) -> dict:
 def _make_agent(sid: str, key: str, session_id: str | None = None):
     from run_agent import AIAgent
     from hermes_cli.runtime_provider import resolve_runtime_provider
+    from agent.shell_hooks import register_from_config
+
+    # Register shell hooks from config — the TUI gateway subprocess doesn't
+    # go through cli.py / gateway/run.py where this normally happens.
+    # Idempotent: subsequent calls are no-ops.
+    try:
+        register_from_config(_load_cfg(), accept_hooks=True)
+    except Exception:
+        logger.debug("shell-hook registration in _make_agent failed", exc_info=True)
 
     # MCP tool discovery runs in a background daemon thread at startup so a
     # dead server can't freeze the shell (see tui_gateway/entry.py).  The agent

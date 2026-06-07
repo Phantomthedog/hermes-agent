@@ -268,6 +268,15 @@ def main():
     # alone (e.g. in tests) does not spawn a background daemon thread.
     server._start_gateway_idle_sweeper()
 
+    # Register shell hooks at startup so they're ready before any session
+    # lifecycle events (on_session_finalize, on_session_reset, etc.).
+    try:
+        from agent.shell_hooks import register_from_config
+        from hermes_cli.config import load_config
+        register_from_config(load_config(), accept_hooks=True)
+    except Exception:
+        logger.debug("shell-hook registration at TUI gateway startup failed", exc_info=True)
+
     if not write_json({
         "jsonrpc": "2.0",
         "method": "event",

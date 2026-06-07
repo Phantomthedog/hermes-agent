@@ -1170,3 +1170,75 @@ not the specific names.
 
 Reviewers should reject new change-detector tests; authors should convert
 them into invariants before re-requesting review.
+
+## Codex Worker Instructions
+
+These rules apply when **Codex** (`codex exec`) is used as a bounded coding worker
+delegated from Hermes. Codex edits code, runs focused tests, and keeps chat short.
+Long analysis goes to a file, not the terminal.
+
+### Output Rules
+
+- **Keep chat output under 100 lines.** Full-file dumps flood the channel.
+- **Write long reports** to `/mnt/c/AI_WORKSPACE/20_PROJECTS/hermes-codex/<task-name>/report.md`.
+- **Do not paste full files** unless the user explicitly asks for the entire content.
+- Use `--output-last-message <file>` to capture structured output in a file.
+
+### Branch & Safety Rules
+
+- **Preserve Jack-local branches** (`local/*`, `fix/*`, `feature/*`). Never reset,
+  rebase, delete, or force-push them.
+- **Never drop stashes.**
+- **Never overwrite uncommitted local changes.**
+- Work on a **fresh branch from `main`** or the requested base.
+- After editing: show `git diff --stat` only (full diffs go to the report file).
+
+### Definition of Done
+
+1. Code compiles / syntax-validates.
+2. Focused tests pass for the changed area.
+3. Report written to task directory if the change is non-trivial.
+4. `git diff --stat` shown in chat.
+5. No Jack-local branches damaged.
+
+### Report Format (when needed)
+
+Write to `/mnt/c/AI_WORKSPACE/20_PROJECTS/hermes-codex/<task-name>/report.md`:
+```markdown
+# <task-name> — Codex Report — YYYY-MM-DD HH:MM
+
+## Changes
+- file: what changed and why
+
+## Tests
+- what ran, what passed
+
+## Risks
+- remaining issues, if any
+```
+
+### Usage Pattern (from Hermes)
+
+```bash
+# Safest: use the wrapper
+hermes-codex-task "your prompt here"
+
+# Direct (with output capture):
+cd ~/.hermes/hermes-agent && \
+  codex exec --ephemeral --sandbox workspace-write \
+    -m gpt-5.5 \
+    -c reasoning_effort=medium \
+    -C ~/.hermes/hermes-agent \
+    -o /tmp/codex-last-msg.txt \
+    -- "$(cat)"
+```
+
+### Recovery After Stream Disconnect
+
+1. Check `codex exec --output-last-message <file>` for captured output.
+2. If the task left the tree dirty, `git diff --stat` to assess.
+3. Resume with `codex resume --last` or `codex exec resume --last`.
+4. If Codex is stuck/incomplete, narrow the prompt and retry.
+
+`.codex/rules/hermes-worker.rules` enforces the branch/stash/push safety
+policy at the execution level.
