@@ -38,6 +38,7 @@ test('WSL uses Windows curl.exe to reach the Windows loopback control API', () =
     baseUrl: DEFAULT_CONTROL_BASE_URL,
     binary: '/mnt/c/Windows/System32/curl.exe',
     reason: 'wsl-windows-curl',
+    token: null,
     transport: 'windows-curl'
   })
 })
@@ -63,6 +64,7 @@ test('env override wins and uses direct HTTP transport', () => {
   assert.deepEqual(endpoint, {
     baseUrl: 'http://192.0.2.10:10011',
     reason: 'env-override',
+    token: null,
     transport: 'http'
   })
 })
@@ -73,6 +75,7 @@ test('native desktop uses direct localhost HTTP', () => {
   assert.deepEqual(endpoint, {
     baseUrl: DEFAULT_CONTROL_BASE_URL,
     reason: 'localhost-http',
+    token: null,
     transport: 'http'
   })
 })

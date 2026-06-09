@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const http = require('node:http')
+const path = require('node:path')
 const { spawn } = require('node:child_process')
 
 const DEFAULT_CONTROL_BASE_URL = 'http://127.0.0.1:10011'
@@ -8,6 +9,9 @@ const WINDOWS_CURL_CANDIDATES = [
   '/mnt/c/Windows/System32/curl.exe',
   '/mnt/c/Windows/Sysnative/curl.exe'
 ]
+
+const WINDOWS_USER_PROFILE_PREFIX = '/mnt/c/Users/'
+const RELATIVE_TOKEN_FILE = 'AppData/Local/WhisperDictate/control_token'
 
 function normalizeControlBaseUrl(raw) {
   const value = String(raw || '').trim()
@@ -26,17 +30,68 @@ function findWindowsCurl(fileExists = fs.existsSync) {
   return null
 }
 
+function resolveTokenFromEnv(env = process.env) {
+  return (env.HERMES_DICTATE_CONTROL_TOKEN || env.WHISPER_DICTATE_CONTROL_TOKEN || '').trim() || null
+}
+
+function resolveTokenFromFile(fileExists = fs.existsSync, readFile = fs.readFileSync) {
+  // Known token file paths: Windows user dirs under /mnt/c/Users/
+  // Also check a direct path if we can determine the user
+  const candidates = []
+
+  // Scan known Windows user directories
+  try {
+    const entries = fs.readdirSync(WINDOWS_USER_PROFILE_PREFIX, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        const tokenPath = path.join(WINDOWS_USER_PROFILE_PREFIX, entry.name, RELATIVE_TOKEN_FILE)
+        candidates.push(tokenPath)
+      }
+    }
+  } catch {
+    // Can't scan /mnt/c/Users/ — fall through
+  }
+
+  // Read first existing file
+  for (const candidate of candidates) {
+    try {
+      if (fileExists(candidate)) {
+        const content = readFile(candidate, 'utf-8').trim()
+        if (content) return content
+      }
+    } catch {
+      // Try next candidate
+    }
+  }
+  return null
+}
+
+function resolveControlToken({ env = process.env, fileExists = fs.existsSync, readFile = fs.readFileSync } = {}) {
+  const fromEnv = resolveTokenFromEnv(env)
+  if (fromEnv) return fromEnv
+  try {
+    return resolveTokenFromFile(fileExists, readFile)
+  } catch {
+    return null
+  }
+}
+
 function resolveDictationControlTransport({
   env = process.env,
   fileExists = fs.existsSync,
+  readFile = fs.readFileSync,
   isWsl = false
 } = {}) {
+
+  const token = resolveControlToken({ env, fileExists, readFile })
+
   const overrideUrl = normalizeControlBaseUrl(env.HERMES_DICTATE_CONTROL_URL)
   if (overrideUrl) {
     return {
       baseUrl: overrideUrl,
       reason: 'env-override',
-      transport: 'http'
+      transport: 'http',
+      token
     }
   }
 
@@ -47,7 +102,8 @@ function resolveDictationControlTransport({
         baseUrl: DEFAULT_CONTROL_BASE_URL,
         binary: windowsCurl,
         reason: 'wsl-windows-curl',
-        transport: 'windows-curl'
+        transport: 'windows-curl',
+        token
       }
     }
   }
@@ -55,7 +111,8 @@ function resolveDictationControlTransport({
   return {
     baseUrl: DEFAULT_CONTROL_BASE_URL,
     reason: 'localhost-http',
-    transport: 'http'
+    transport: 'http',
+    token
   }
 }
 
@@ -75,7 +132,8 @@ function settleOnce(resolve, value) {
 function sendHttpPost(url, {
   httpRequest = http.request,
   log = () => {},
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  token = null
 } = {}) {
   return new Promise(resolve => {
     let settled = false
@@ -86,7 +144,12 @@ function sendHttpPost(url, {
       settled = settleOnce(resolve, value)
     }
 
-    const req = httpRequest(url, { method: 'POST', timeout: timeoutMs }, res => {
+    const headers = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    const req = httpRequest(url, { method: 'POST', headers, timeout: timeoutMs }, res => {
       let body = ''
       res.on('data', chunk => { body += chunk })
       res.on('end', () => {
@@ -117,7 +180,8 @@ function sendWindowsCurlPost(url, {
   binary,
   log = () => {},
   spawnFn = spawn,
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  token = null
 } = {}) {
   return new Promise(resolve => {
     if (!binary) {
@@ -127,7 +191,12 @@ function sendWindowsCurlPost(url, {
     }
 
     const maxTimeSeconds = Math.max(1, Math.ceil(timeoutMs / 1000))
-    const child = spawnFn(binary, ['-sS', '--max-time', String(maxTimeSeconds), '-X', 'POST', url], {
+    const args = ['-sS', '--max-time', String(maxTimeSeconds), '-X', 'POST']
+    if (token) {
+      args.push('-H', `Authorization: Bearer ${token}`)
+    }
+    args.push(url)
+    const child = spawnFn(binary, args, {
       windowsHide: true
     })
 
@@ -186,21 +255,24 @@ function createDictationControlClient({
   function send(action) {
     const url = buildActionUrl(endpoint.baseUrl, action)
     const suffix = endpoint.transport === 'windows-curl' ? ` via ${endpoint.binary}` : ''
-    log(`[HERMES_DICTATE] control request POST ${url}${suffix}`)
+    const tokenInfo = endpoint.token ? ' (with auth token)' : ''
+    log(`[HERMES_DICTATE] control request POST ${url}${suffix}${tokenInfo}`)
 
     if (endpoint.transport === 'windows-curl') {
       return sendWindowsCurlPost(url, {
         binary: endpoint.binary,
         log,
         spawnFn,
-        timeoutMs
+        timeoutMs,
+        token: endpoint.token
       })
     }
 
     return sendHttpPost(url, {
       httpRequest,
       log,
-      timeoutMs
+      timeoutMs,
+      token: endpoint.token
     })
   }
 
@@ -215,6 +287,7 @@ module.exports = {
   createDictationControlClient,
   findWindowsCurl,
   normalizeControlBaseUrl,
+  resolveControlToken,
   resolveDictationControlTransport,
   sendHttpPost,
   sendWindowsCurlPost
