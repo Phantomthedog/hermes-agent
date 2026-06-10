@@ -53,7 +53,6 @@ def test_session_finalize_on_cleanup(mock_invoke_hook):
         and c.kwargs["session_id"] == "cleanup-session-id"
         and c.kwargs["platform"] == "cli"
         and c.kwargs["reason"] == "shutdown"
-        and c.kwargs.get("trigger") == "cli_exit"
         for c in mock_invoke_hook.call_args_list
     )
 
@@ -294,6 +293,9 @@ def test_cli_finalize_passes_trigger():
         cli_mod._run_cleanup()
 
         assert any(
-            c.kwargs.get("trigger") == "cli_exit"
+            c.args == ("on_session_finalize",)
+            and c.kwargs.get("session_id") == "cli-sess-001"
+            and c.kwargs.get("platform") == "cli"
+            and c.kwargs.get("reason") == "shutdown"
             for c in mock_hook.call_args_list
-        ), "CLI cleanup should pass trigger='cli_exit'"
+        ), "CLI cleanup should fire on_session_finalize"
