@@ -7174,3 +7174,169 @@ def test_reap_idle_sessions_closes_only_evictable(monkeypatch):
         assert closed == [("stale", "idle_timeout")]
     finally:
         server._sessions.clear()
+
+
+def test_drain_owned_notifications_does_not_leak_to_wrong_session(monkeypatch):
+    """Post-turn drain must not dispatch background-completion events to a
+    session that does not own them (Desktop cross-session leak regression)."""
+    import queue as _queue_mod
+
+    # Two sessions with distinct session_keys
+    session_a = _session(session_key="owner-a")
+    session_b = _session(session_key="owner-b")
+    server._sessions["sid_a"] = session_a
+    server._sessions["sid_b"] = session_b
+
+    turns_a = []
+    turns_b = []
+
+    # Fresh isolated queue
+    fake_queue = _queue_mod.Queue()
+
+    class _FakeRegistry:
+        completion_queue = fake_queue
+        _completion_consumed = set()
+        def is_completion_consumed(self, sid):
+            return sid in self._completion_consumed
+
+    fake_registry = _FakeRegistry()
+
+    def _fake_belongs_elsewhere(session, evt):
+        evt_key = str(evt.get("session_key") or "")
+        if not evt_key:
+            return False
+        if evt_key == str(session.get("session_key") or ""):
+            return False
+        for s in (session_a, session_b):
+            if s is not session and str(s.get("session_key") or "") == evt_key:
+                return True
+        return False
+
+    def _fake_format_process_notification(evt):
+        return f"[IMPORTANT: Background process {evt.get('session_id')} completed.]"
+
+    def _fake_run_prompt_submit(rid, sid, session, text):
+        if sid == "sid_a":
+            turns_a.append(text)
+        elif sid == "sid_b":
+            turns_b.append(text)
+        with session["history_lock"]:
+            session["running"] = False
+
+    monkeypatch.setattr(server, "_emit", lambda *a, **kw: None)
+    monkeypatch.setattr(server, "_run_prompt_submit", _fake_run_prompt_submit)
+    monkeypatch.setattr(server, "_notification_event_belongs_elsewhere", _fake_belongs_elsewhere)
+
+    # Patch the *module-level attributes* so the local import inside
+    # _drain_owned_notifications picks up our fakes.
+    import tools.process_registry as _pr_mod
+    monkeypatch.setattr(_pr_mod, "process_registry", fake_registry)
+    monkeypatch.setattr(_pr_mod, "format_process_notification", _fake_format_process_notification)
+
+    try:
+        # ── Test 1: Drain in session B while the event belongs to A ──
+        evt_for_a = {
+            "type": "completion",
+            "session_id": "proc_a",
+            "session_key": "owner-a",
+            "command": "echo A_DONE",
+            "exit_code": 0,
+            "output": "A_DONE",
+        }
+        fake_queue.put(dict(evt_for_a))
+
+        # Session B's post-turn drain should NOT dispatch A's event
+        server._drain_owned_notifications("rid_b", "sid_b", session_b)
+
+        # The event should be requeued (queue non-empty) for A's poller
+        assert not fake_queue.empty(), (
+            "session B's drain must requeue A's event, not consume it"
+        )
+        assert len(turns_b) == 0, (
+            "session B must not receive a turn from A's notification"
+        )
+
+        # ── Test 2: Now drain in session A ──
+        server._drain_owned_notifications("rid_a", "sid_a", session_a)
+
+        assert len(turns_a) == 1, "session A should receive its own notification"
+
+    finally:
+        server._sessions.pop("sid_a", None)
+        server._sessions.pop("sid_b", None)
+
+
+def test_drain_owned_notifications_handles_orphan_and_global(monkeypatch):
+    """Orphan events (owner gone) and global events (empty session_key)
+    are dispatched by whoever drains the queue, not lost."""
+    import queue as _queue_mod
+
+    session = _session(session_key="my-key")
+    server._sessions["sid"] = session
+
+    turns = []
+
+    fake_queue = _queue_mod.Queue()
+
+    class _FakeRegistry:
+        completion_queue = fake_queue
+        _completion_consumed = set()
+        def is_completion_consumed(self, sid):
+            return sid in self._completion_consumed
+
+    fake_registry = _FakeRegistry()
+
+    def _fake_belongs_elsewhere(session, evt):
+        evt_key = str(evt.get("session_key") or "")
+        if not evt_key:
+            return False
+        if evt_key == "ghost-session":
+            return False  # owner not present → handle as fallback
+        if evt_key == "my-key":
+            return False  # owned by this session
+        return True
+
+    def _fake_format_process_notification(evt):
+        return f"[IMPORTANT: Background process {evt.get('session_id')} completed.]"
+
+    def _fake_run_prompt_submit(rid, sid, session, text):
+        turns.append(text)
+        with session["history_lock"]:
+            session["running"] = False
+
+    monkeypatch.setattr(server, "_emit", lambda *a, **kw: None)
+    monkeypatch.setattr(server, "_run_prompt_submit", _fake_run_prompt_submit)
+    monkeypatch.setattr(server, "_notification_event_belongs_elsewhere", _fake_belongs_elsewhere)
+
+    import tools.process_registry as _pr_mod
+    monkeypatch.setattr(_pr_mod, "process_registry", fake_registry)
+    monkeypatch.setattr(_pr_mod, "format_process_notification", _fake_format_process_notification)
+
+    try:
+        orphan = {
+            "type": "completion",
+            "session_id": "proc_orphan",
+            "session_key": "ghost-session",
+            "command": "echo ORPHAN",
+            "exit_code": 0,
+            "output": "orphan output",
+        }
+        fake_queue.put(dict(orphan))
+
+        global_evt = {
+            "type": "completion",
+            "session_id": "proc_global",
+            "session_key": "",
+            "command": "echo GLOBAL",
+            "exit_code": 0,
+            "output": "global output",
+        }
+        fake_queue.put(dict(global_evt))
+
+        server._drain_owned_notifications("rid", "sid", session)
+
+        assert len(turns) == 2, (
+            f"both orphan and global events should dispatch, got {len(turns)}"
+        )
+    finally:
+        server._sessions.pop("sid", None)

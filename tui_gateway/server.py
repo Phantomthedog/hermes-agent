@@ -5061,6 +5061,88 @@ def _start_notification_poller(sid: str, session: dict) -> threading.Event:
     return stop
 
 
+def _drain_owned_notifications(
+    rid: str, sid: str, session: dict,
+) -> None:
+    """Drain post-turn notification events that belong to *this* session.
+
+    ``drain_notifications()`` has no owner awareness — it returns every
+    pending event from the global ``completion_queue`` regardless of which
+    session launched the background process.  Calling it directly and
+    dispatching to the current session leaks completion output into the
+    wrong Desktop/TUI window (the mid-turn safety-net path, not the per-
+    session poller loop which already has ``_notification_event_belongs_elsewhere``).
+
+    This helper mirrors the owner-aware logic of ``_notification_poller_loop``:
+    it drains raw events, skips those that belong to a different live session
+    (re-queuing them for their owner's poller), and only dispatches owned or
+    orphan (owner-gone) events to the calling session.
+    """
+    from tools.process_registry import process_registry, format_process_notification
+
+    _emitted: set = set()
+    deferred: list = []
+    try:
+        while not process_registry.completion_queue.empty():
+            try:
+                evt = process_registry.completion_queue.get_nowait()
+            except Exception:
+                break
+
+            # Not ours — defer to the owning session's poller.  Must NOT
+            # put-back-and-continue here: that creates an infinite loop
+            # since the same foreign event keeps getting requeued and
+            # re-dequeued by the same caller.  Instead collect deferred
+            # events and requeue them all at the end, matching the
+            # pattern in _notification_poller_loop's drain-on-stop path.
+            if _notification_event_belongs_elsewhere(session, evt):
+                deferred.append(evt)
+                continue
+
+            _evt_sid = evt.get("session_id", "")
+            if evt.get("type") == "completion" and process_registry.is_completion_consumed(_evt_sid):
+                continue
+
+            text = format_process_notification(evt)
+            if not text:
+                continue
+
+            # Dedup exactly like the poller loop does.
+            _dedup_key = _notification_event_dedup_key(evt)
+            if _dedup_key not in _emitted:
+                _emit("status.update", sid, {"kind": "process", "text": text})
+                _emitted.add(_dedup_key)
+
+            with session["history_lock"]:
+                if session.get("running"):
+                    process_registry.completion_queue.put(evt)
+                    break
+                session["running"] = True
+
+            try:
+                _emit("message.start", sid)
+                _run_prompt_submit(rid, sid, session, text)
+            except Exception as _n_exc:
+                print(
+                    f"[tui_gateway] completion notification dispatch failed: "
+                    f"{type(_n_exc).__name__}: {_n_exc}",
+                    file=sys.stderr,
+                )
+                with session["history_lock"]:
+                    session["running"] = False
+    except Exception as _drain_exc:
+        print(
+            f"[tui_gateway] completion queue drain failed: "
+            f"{type(_drain_exc).__name__}: {_drain_exc}",
+            file=sys.stderr,
+        )
+    finally:
+        # Hand any other sessions' events back to the shared queue.
+        # MUST run even on exception so deferred foreign events are never lost.
+        for _d_evt in deferred:
+            process_registry.completion_queue.put(_d_evt)
+
+
 def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
     with session["history_lock"]:
         history = list(session["history"])
@@ -5467,27 +5549,13 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
 
         # Drain completion notifications that arrived during this turn.
         # The background poller handles between-turn delivery; this is
-        # the safety net for events that arrived mid-turn.
+        # the safety net for events that arrived mid-turn.  Uses an owner-
+        # aware drain so background-process completion never leaks into the
+        # wrong Desktop/TUI session (the poller loop already filters out
+        # foreign events, but the mid-turn safety-net path was missing the
+        # same check).
         try:
-            from tools.process_registry import process_registry
-
-            for _evt, synth in process_registry.drain_notifications():
-                with session["history_lock"]:
-                    if session.get("running"):
-                        process_registry.completion_queue.put(_evt)
-                        break
-                    session["running"] = True
-                try:
-                    _emit("message.start", sid)
-                    _run_prompt_submit(rid, sid, session, synth)
-                except Exception as _n_exc:
-                    print(
-                        f"[tui_gateway] completion notification dispatch failed: "
-                        f"{type(_n_exc).__name__}: {_n_exc}",
-                        file=sys.stderr,
-                    )
-                    with session["history_lock"]:
-                        session["running"] = False
+            _drain_owned_notifications(rid, sid, session)
         except Exception as _drain_exc:
             print(
                 f"[tui_gateway] completion queue drain failed: "
