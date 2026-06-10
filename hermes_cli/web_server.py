@@ -10062,6 +10062,56 @@ app.include_router(_dashboard_auth_router)
 mount_spa(app)
 
 
+def _preload_stt_model() -> None:
+    """Preload the local STT model in a background thread so the first
+    dictation transcription doesn't pay the ~5s model-loading latency.
+
+    The model is cached in ``tools.transcription_tools._local_model``,
+    so once loaded here, every subsequent ``/api/audio/transcribe`` request
+    hits the warm cache.  Failures are logged but never block startup.
+    """
+    try:
+        from tools.transcription_tools import (
+            _HAS_FASTER_WHISPER,
+            _load_local_whisper_model,
+            _load_stt_config,
+            _get_provider,
+            is_stt_enabled,
+        )
+        stt_config = _load_stt_config()
+        if not is_stt_enabled(stt_config):
+            return
+        provider = _get_provider(stt_config)
+        if provider not in ("local",):
+            return
+        if not _HAS_FASTER_WHISPER:
+            return
+        model_name = (
+            stt_config.get("local", {}).get("model")
+            or os.getenv("HERMES_LOCAL_STT_MODEL")
+            or "base"
+        )
+        _log.info(
+            "Preloading local STT model '%s' in background thread ...",
+            model_name,
+        )
+
+        def _load():
+            try:
+                _load_local_whisper_model(model_name)
+                _log.info("Local STT model '%s' preloaded.", model_name)
+            except Exception as exc:
+                _log.warning(
+                    "Failed to preload STT model '%s': %s",
+                    model_name, exc,
+                )
+
+        t = threading.Thread(target=_load, daemon=True, name="stt-preload")
+        t.start()
+    except Exception as exc:
+        _log.debug("STT model preload skipped: %s", exc)
+
+
 def start_server(
     host: str = "127.0.0.1",
     port: int = 9119,
@@ -10174,6 +10224,9 @@ def start_server(
             )
 
     print(f"  Hermes Web UI → http://{host}:{port}")
+    # Preload the local STT model (if configured) in the background so the
+    # first desktop dictation transcription doesn't block on model loading.
+    _preload_stt_model()
     # proxy_headers defaults to False so _ws_client_is_allowed sees the real
     # connection peer rather than X-Forwarded-For's rewritten value (which
     # would defeat the loopback gate when behind a reverse proxy).  When the

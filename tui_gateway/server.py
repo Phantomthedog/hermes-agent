@@ -7312,6 +7312,8 @@ def _(rid, params: dict) -> dict:
             cat_map[cat].append([c, desc])
 
         for name, desc, cat in _TUI_EXTRA:
+            if name.lower() in canon:
+                continue
             all_pairs.append([name, desc])
             if cat not in cat_map:
                 cat_map[cat] = []
@@ -7351,6 +7353,9 @@ def _(rid, params: dict) -> dict:
             from agent.skill_commands import scan_skill_commands
 
             for k, info in sorted(scan_skill_commands().items()):
+                if k.lower() in canon:
+                    continue
+                canon[k.lower()] = k
                 d = str(info.get("description", "Skill"))
                 all_pairs.append([k, d[:120] + ("…" if len(d) > 120 else "")])
                 skill_count += 1
