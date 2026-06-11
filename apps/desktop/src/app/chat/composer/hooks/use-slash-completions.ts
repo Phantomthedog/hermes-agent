@@ -38,9 +38,12 @@ function commandText(value: string): string {
   return value.startsWith('/') ? value : `/${value}`
 }
 
-/** Live `/` completions backed by the gateway's `commands.catalog` +
- * `complete.slash` RPC. Skills and quick_commands are always sourced from
- * `commands.catalog` (complete.slash dropped them in PR #38467). */
+/** Live `/` completions backed by the gateway's `commands.catalog` for the
+ * empty palette and `complete.slash` for typed queries. Upstream's
+ * `complete.slash` RPC already surfaces skills and quick_commands
+ * (PR #38467/#38531), so the parallel catalog+merge workaround is no
+ * longer needed — it was producing duplicate entries. */
+
 export function useSlashCompletions(options: { gateway: HermesGateway | null }): {
   adapter: Unstable_TriggerAdapter
   loading: boolean
@@ -57,15 +60,13 @@ export function useSlashCompletions(options: { gateway: HermesGateway | null }):
       const text = `/${query}`
 
       try {
-        // Always fetch the catalog — it is the source of truth for skills and
-        // quick_commands.  For typed queries we also call complete.slash and
-        // merge its results (deduplicated by command text).
-        const catalog = filterDesktopCommandsCatalog(
-          await gateway.request<CommandsCatalogLike>('commands.catalog')
-        )
-
         if (!query) {
-          // Empty "/" palette: return everything the catalog offers.
+          // Empty "/" palette: use commands.catalog (source of truth for
+          // skills and quick_commands in the unfiltered view).
+          const catalog = filterDesktopCommandsCatalog(
+            await gateway.request<CommandsCatalogLike>('commands.catalog')
+          )
+
           const items = (catalog.pairs ?? []).map(([command, meta]) => ({
             text: command,
             display: command,
@@ -74,44 +75,23 @@ export function useSlashCompletions(options: { gateway: HermesGateway | null }):
           return { items, query }
         }
 
-        // Typed query: fetch catalog + complete.slash in parallel.
-        const slashResult = gateway
-          .request<{ items?: CompletionEntry[] }>('complete.slash', { text })
-          .catch(() => null)
-
-        // Build items from catalog, filtered client-side by the typed prefix.
-        const q = query.toLowerCase()
-        const catalogItems: CompletionEntry[] = (catalog.pairs ?? [])
-          .filter(
-            ([cmd]) =>
-              cmd.toLowerCase().startsWith(`/${q}`) ||
-              cmd.toLowerCase().slice(1).startsWith(q)
-          )
-          .map(([command, meta]) => ({
-            text: command,
-            display: command,
-            meta: desktopSlashDescription(command, meta)
-          }))
-
-        // Merge complete.slash results, deduplicating by command text.
-        const slashItems: CompletionEntry[] = (
-          (await slashResult)?.items ?? []
+        // Typed query: use complete.slash only. Upstream fixed
+        // complete.slash to include skills (PR #38467/#38531), so the
+        // old parallel merge with commands.catalog is redundant and
+        // causes duplicate entries.
+        const result = await gateway.request<{ items?: CompletionEntry[] }>(
+          'complete.slash',
+          { text }
         )
+
+        const items: CompletionEntry[] = (result.items ?? [])
           .filter(item => isDesktopSlashSuggestion(item.text))
           .map(item => ({
             ...item,
             meta: desktopSlashDescription(item.text, textValue(item.meta))
           }))
 
-        const seen = new Set(catalogItems.map(i => i.text.toLowerCase()))
-        for (const item of slashItems) {
-          if (!seen.has(item.text.toLowerCase())) {
-            catalogItems.push(item)
-            seen.add(item.text.toLowerCase())
-          }
-        }
-
-        return { items: catalogItems, query }
+        return { items, query }
       } catch {
         return { items: [], query }
       }
