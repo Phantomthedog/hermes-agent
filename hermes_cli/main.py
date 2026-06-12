@@ -334,21 +334,66 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Falls back to ~/.hermes/active_profile for sticky default.
 # ---------------------------------------------------------------------------
 def _apply_profile_override() -> None:
-    """Pre-parse --profile/-p and set HERMES_HOME before module imports."""
+    """Pre-parse --profile/-p and set HERMES_HOME before imports."""
     argv = sys.argv[1:]
     profile_name = None
     consume = 0
+    profile_index = None
 
-    # 1. Check for explicit -p / --profile flag
-    for i, arg in enumerate(argv):
+    def _inside_mcp_add_args(index: int) -> bool:
+        """True once argv reaches `hermes mcp add ... --args <command argv>`.
+
+        ``mcp add --args`` is command-argv passthrough. Flags after that point
+        belong to the child MCP command (for example Docker MCP Toolkit's
+        ``--profile``), not to Hermes' own profile selector.
+        """
+        try:
+            mcp_index = argv.index("mcp", 0, index)
+            argv.index("add", mcp_index + 1, index)
+        except ValueError:
+            return False
+        return True
+
+    # 1. Check for explicit -p / --profile flag. Historically this worked even
+    # after the subcommand (`hermes chat -p coder`), so keep scanning broadly.
+    # The exception is command-argv passthrough regions such as `mcp add --args`.
+    value_flags = {
+        "-z", "--oneshot",
+        "-m", "--model",
+        "--provider",
+        "-t", "--toolsets",
+        "-r", "--resume",
+        "-s", "--skills",
+    }
+    optional_value_flags = {"-c", "--continue"}
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--":
+            break
+        if arg == "--args" and _inside_mcp_add_args(i):
+            break
         if arg in {"--profile", "-p"} and i + 1 < len(argv):
             profile_name = argv[i + 1]
             consume = 2
+            profile_index = i
             break
-        elif arg.startswith("--profile="):
+        if arg.startswith("--profile="):
             profile_name = arg.split("=", 1)[1]
             consume = 1
+            profile_index = i
             break
+        if "=" not in arg and arg in value_flags and i + 1 < len(argv):
+            i += 2
+        elif (
+            "=" not in arg
+            and arg in optional_value_flags
+            and i + 1 < len(argv)
+            and not argv[i + 1].startswith("-")
+        ):
+            i += 2
+        else:
+            i += 1
 
     # 1b. Reject values that can't be valid profile names (e.g. pytest's
     # "-p no:xdist" would be misread as profile "no:xdist" otherwise).
@@ -360,6 +405,7 @@ def _apply_profile_override() -> None:
         if not _re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", profile_name):
             profile_name = None
             consume = 0
+            profile_index = None
 
     # 1.5 If HERMES_HOME is already set and no explicit flag was given, trust it
     # only when it already points to a specific profile directory.  The
@@ -407,16 +453,9 @@ def _apply_profile_override() -> None:
             return
         os.environ["HERMES_HOME"] = hermes_home
         # Strip the flag from argv so argparse doesn't choke
-        if consume > 0:
-            for i, arg in enumerate(argv):
-                if arg in {"--profile", "-p"}:
-                    start = i + 1  # +1 because argv is sys.argv[1:]
-                    sys.argv = sys.argv[:start] + sys.argv[start + consume :]
-                    break
-                elif arg.startswith("--profile="):
-                    start = i + 1
-                    sys.argv = sys.argv[:start] + sys.argv[start + 1 :]
-                    break
+        if consume > 0 and profile_index is not None:
+            start = profile_index + 1  # +1 because argv is sys.argv[1:]
+            sys.argv = sys.argv[:start] + sys.argv[start + consume :]
 
 
 _apply_profile_override()
@@ -1523,6 +1562,8 @@ def _ensure_tui_node() -> None:
             env={**os.environ, "HERMES_HOME": hermes_home},
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -1647,6 +1688,8 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env={**os.environ, "CI": "1"},
         )
         if result.returncode != 0:
@@ -1671,6 +1714,8 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
             cwd=str(ink_dir),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             combined = f"{result.stdout or ''}{result.stderr or ''}".strip()
@@ -1699,6 +1744,8 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
             cwd=str(tui_dir),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             combined = f"{result.stdout or ''}{result.stderr or ''}".strip()
@@ -2390,6 +2437,8 @@ def cmd_whatsapp(args):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except KeyboardInterrupt:
             print("\n  ✗ Install cancelled")
@@ -4578,13 +4627,18 @@ def _run_npm_install_deterministic(
     the working tree dirty and causes the next ``hermes update`` to stash the
     lockfile — repeatedly.
     """
+    # unicode-animations' postinstall animates to /dev/tty (bypasses
+    # --silent/capture_output). It no-ops when CI is set — same as the TUI
+    # install path and nix/lib.nix npm ci hooks.
+    run_env = {**os.environ, **(env or {}), "CI": "1"}
+
     lockfile = cwd / "package-lock.json"
     if lockfile.exists():
         ci_cmd = [npm, "ci", *extra_args]
         ci_result = subprocess.run(
             ci_cmd,
             cwd=cwd,
-            env=env,
+            env=run_env,
             capture_output=capture_output,
             text=True,
             encoding="utf-8",
@@ -4599,7 +4653,7 @@ def _run_npm_install_deterministic(
     return subprocess.run(
         install_cmd,
         cwd=cwd,
-        env=env,
+        env=run_env,
         capture_output=capture_output,
         text=True,
         encoding="utf-8",
@@ -10296,6 +10350,8 @@ def cmd_dashboard(args):
         _launch_profile not in ("default", "custom")
         and not getattr(args, "isolated", False)
         and not getattr(args, "open_profile", "")
+        # Desktop pool backends are intentionally per-profile.
+        and os.environ.get("HERMES_DESKTOP") != "1"
     ):
         url = f"http://{args.host or '127.0.0.1'}:{args.port}/?profile={_launch_profile}"
         if _dashboard_listening(args.host, args.port):
@@ -10394,6 +10450,26 @@ def cmd_dashboard(args):
         # log and proceed; the gate's fail-closed branch will surface
         # the missing-provider state if it matters.
         print(f"⚠ Plugin discovery failed: {exc}", file=sys.stderr)
+
+    # Desktop chat uses the dashboard's in-process /api/ws gateway, which builds
+    # agents via tui_gateway.server._make_agent.  That path only snapshots the
+    # tool registry — it never starts MCP discovery (the stdio TUI does that in
+    # tui_gateway/entry.py, which the dashboard process doesn't run).  Without
+    # this, a profile's configured MCP servers never connect, so desktop
+    # sessions show no MCP tools.  Spawn discovery in the background here so a
+    # slow/dead server can't block dashboard startup.
+    try:
+        from hermes_cli.mcp_startup import start_background_mcp_discovery
+
+        start_background_mcp_discovery(
+            logger=logger,
+            thread_name="dashboard-mcp-discovery",
+        )
+    except Exception:
+        logger.debug(
+            "Background MCP tool discovery failed at dashboard startup",
+            exc_info=True,
+        )
 
     from hermes_cli.web_server import start_server
 
