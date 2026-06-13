@@ -5389,7 +5389,8 @@ def cmd_gui(args: argparse.Namespace):
 
     if source_mode:
         print("→ Launching Hermes Desktop from source build...")
-        launch_result = subprocess.run([npm, "exec", "--", "electron", "."], cwd=desktop_dir, env=env, check=False)
+        electron_bin = str(PROJECT_ROOT / "node_modules" / ".bin" / "electron")
+        launch_result = subprocess.run([electron_bin, "."], cwd=desktop_dir, env=env, check=False)
         sys.exit(launch_result.returncode)
 
     if packaged_executable is None:
