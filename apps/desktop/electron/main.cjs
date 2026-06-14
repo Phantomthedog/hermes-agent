@@ -5125,10 +5125,12 @@ function createWindow() {
     vibrancy: IS_MAC ? 'sidebar' : undefined,
     opacity: windowOpacity(),
     icon,
-    // Hidden until the first themed paint so macOS `vibrancy` (which ignores
+    // Hidden on macOS until the first themed paint so `vibrancy` (which ignores
     // `backgroundColor` and follows the OS appearance) can't flash a light
-    // material before the renderer paints the app theme. See createSessionWindow.
-    show: false,
+    // material before the renderer paints the app theme. On Linux/WSL the
+    // window manager may not correctly map a deferred-show window, so show
+    // immediately outside macOS. See createSessionWindow.
+    show: IS_MAC ? false : true,
     backgroundColor: getWindowBackgroundColor(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -5166,7 +5168,9 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.show()
+    mainWindow.focus()
   })
 
   mainWindow.on('will-enter-full-screen', () => sendWindowStateChanged(true))
@@ -5261,6 +5265,10 @@ function createWindow() {
   }
 
   mainWindow.webContents.once('did-finish-load', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
     restorePersistedZoomLevel(mainWindow)
     broadcastBootProgress()
     sendWindowStateChanged()
