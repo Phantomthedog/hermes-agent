@@ -3870,6 +3870,71 @@ def _coerce_message_text(content: Any) -> str:
     return str(content)
 
 
+# ── LCM summary metadata projection ──────────────────────────────────
+# When the LCM context engine compresses conversation history, it
+# replaces original messages with summary text containing structured
+# markers like "[Recent Summary (d0, node 42)]" and "[Expand for
+# details: ...]".  We parse these markers to attach `lcm_summary`
+# metadata for the TUI — without mutating the LLM-bound history.
+#
+# This is a *projection*: the raw session["history"] (OpenAI-format
+# message dicts sent to the LLM) is never modified.  Metadata is
+# derived only when converting to TUI wire format.
+
+import re as _re
+
+# Matches: [Recent Summary (d0, node 42)]
+#          [Session Arc Summary (d1, node 7)]
+#          [Depth-3 Summary (d3, node 99)]
+_LCM_SUMMARY_HEADER_RE = _re.compile(
+    r"\[(?P<label>[A-Za-z0-9\- ]+?) Summary \(d(?P<depth>\d+), node (?P<node_id>\d+)\)\]"
+)
+# Matches: [Expand for details: ...]
+_LCM_EXPAND_HINT_RE = _re.compile(
+    r"\[Expand for details: (?P<hint>[^\]]+)\]"
+)
+
+
+def _lcm_summary_metadata_for_message(content: str) -> dict | None:
+    """Parse LCM summary metadata from message content text.
+
+    Returns ``None`` if the content does not contain any LCM summary
+    markers.  Otherwise returns a dict with ``node_ids``, ``depths``,
+    ``depth_labels``, and ``expand_hints`` lists.
+
+    The content may contain multiple summary parts separated by
+    ``\\n\\n---\\n\\n`` (the LCM assembly format).
+    """
+    if not content or "Summary (d" not in content:
+        return None
+
+    parts = content.split("\n\n---\n\n")
+    node_ids: list[int] = []
+    depths: list[int] = []
+    depth_labels: list[str] = []
+    expand_hints: list[str] = []
+
+    for part in parts:
+        header = _LCM_SUMMARY_HEADER_RE.search(part)
+        if not header:
+            continue
+        node_ids.append(int(header.group("node_id")))
+        depths.append(int(header.group("depth")))
+        depth_labels.append(header.group("label").strip())
+        hint = _LCM_EXPAND_HINT_RE.search(part)
+        expand_hints.append(hint.group("hint").strip() if hint else "")
+
+    if not node_ids:
+        return None
+
+    return {
+        "node_ids": node_ids,
+        "depths": depths,
+        "depth_labels": depth_labels,
+        "expand_hints": expand_hints,
+    }
+
+
 def _history_to_messages(history: list[dict]) -> list[dict]:
     messages = []
     tool_call_args = {}
@@ -3925,6 +3990,11 @@ def _history_to_messages(history: list[dict]) -> list[dict]:
             for key in reasoning_keys:
                 if key in m and m.get(key) is not None:
                     msg[key] = m.get(key)
+        # LCM summary metadata projection (display-only, does not
+        # mutate the LLM-bound history).
+        lcm_meta = _lcm_summary_metadata_for_message(content_text)
+        if lcm_meta is not None:
+            msg["lcm_summary"] = lcm_meta
         messages.append(msg)
 
     return messages
@@ -5193,7 +5263,7 @@ def _(rid, params: dict) -> dict:
                     "summary": summary,
                     "usage": usage,
                     "info": info,
-                    "messages": messages,
+                    "messages": _history_to_messages(messages),
                 },
             )
         finally:
@@ -5203,6 +5273,77 @@ def _(rid, params: dict) -> dict:
             _status_update(sid, "ready")
     except Exception as e:
         return _err(rid, 5005, str(e))
+
+
+@method("session.lcm_expand")
+def _(rid, params: dict) -> dict:
+    """Expand an LCM summary node, returning the original messages.
+
+    Takes ``node_id`` (required) plus optional ``max_tokens``,
+    ``source_offset``, ``source_limit``, ``content_offset``.
+    Dispatches through the session's agent context compressor.
+    """
+    session, err = _sess(params, rid)
+    if err:
+        return err
+    node_id = params.get("node_id")
+    if node_id is None:
+        return _err(rid, 4001, "node_id is required")
+    agent = session.get("agent")
+    if agent is None:
+        return _err(rid, 5001, "no active agent")
+    assert agent is not None  # for type narrow
+    compressor = getattr(agent, "context_compressor", None)
+    if compressor is None:
+        return _err(rid, 5002, "no context engine")
+    # Only available on engines that support lcm_expand
+    if not hasattr(compressor, "handle_tool_call"):
+        return _err(rid, 5003, "context engine does not support lcm_expand")
+
+    expand_args = {"node_id": int(node_id)}
+    for key in ("max_tokens", "source_offset", "source_limit", "content_offset"):
+        if key in params:
+            expand_args[key] = params[key]
+
+    try:
+        result_json = compressor.handle_tool_call("lcm_expand", expand_args)
+    except Exception as exc:
+        return _err(rid, 5004, f"lcm_expand failed: {exc}")
+
+    try:
+        result = json.loads(result_json) if isinstance(result_json, str) else result_json
+    except (json.JSONDecodeError, TypeError):
+        return _err(rid, 5005, "lcm_expand returned invalid JSON")
+
+    if "error" in result and not result.get("expanded"):
+        return _err(rid, 5006, result["error"])
+
+    # Convert expanded entries to TUI wire format.
+    # lcm_expand returns items with role/content/tool_call_id etc.
+    expanded_raw = result.get("expanded", [])
+    messages = []
+    for item in expanded_raw:
+        if not isinstance(item, dict):
+            continue
+        content_text = _coerce_message_text(item.get("content"))
+        role = item.get("role", "user")
+        if role == "tool" and content_text.strip():
+            tc_id = item.get("tool_call_id", "")
+            name = item.get("tool_name", "tool")
+            messages.append({"role": "tool", "name": name, "context": content_text[:200]})
+            continue
+        if content_text.strip():
+            messages.append({"role": role, "text": content_text})
+
+    # lcm_expand returns pagination as a nested dict under
+    # result["pagination"] (e.g. {"has_more": false, ...}).
+    pagination = dict(result.get("pagination") or {})
+
+    return _ok(rid, {
+        "node_id": result.get("node_id", node_id),
+        "messages": messages,
+        "pagination": pagination,
+    })
 
 
 @method("session.save")

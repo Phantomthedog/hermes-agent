@@ -111,9 +111,17 @@ export interface ClarifyReq {
   requestId: string
 }
 
+export interface LcmSummaryInfo {
+  depthLabels: string[]
+  depths: number[]
+  expandHints: string[]
+  nodeIds: number[]
+}
+
 export interface Msg {
   info?: SessionInfo
-  kind?: 'diff' | 'intro' | 'panel' | 'slash' | 'trail'
+  kind?: 'diff' | 'intro' | 'lcm-summary' | 'panel' | 'slash' | 'trail'
+  lcmSummary?: LcmSummaryInfo
   panelData?: PanelData
   role: Role
   text: string

@@ -1,6 +1,6 @@
 import { AlternateScreen, Box, NoSelect, ScrollBox, Text } from '@hermes/ink'
 import { useStore } from '@nanostores/react'
-import { Fragment, memo, useMemo, useRef } from 'react'
+import { Fragment, memo, useCallback, useMemo, useRef } from 'react'
 
 import { useGateway } from '../app/gatewayContext.js'
 import type { AppLayoutProps } from '../app/interfaces.js'
@@ -9,6 +9,9 @@ import { $uiState } from '../app/uiStore.js'
 import { INLINE_MODE, SHOW_FPS, TERMUX_TUI_MODE } from '../config/env.js'
 import { PLACEHOLDER } from '../content/placeholders.js'
 import { prevRenderedMsg } from '../domain/blockLayout.js'
+import { toTranscriptMessages } from '../domain/messages.js'
+import type { GatewayTranscriptMessage } from '../gatewayTypes.js'
+import type { Msg } from '../types.js'
 import {
   COMPOSER_PROMPT_GAP_WIDTH,
   composerPromptWidth,
@@ -61,6 +64,20 @@ const TranscriptPane = memo(function TranscriptPane({
   transcript
 }: Pick<AppLayoutProps, 'actions' | 'composer' | 'progress' | 'transcript'>) {
   const ui = useStore($uiState)
+  const { gw } = useGateway()
+
+  const onLcmExpand = useCallback(async (nodeId: number): Promise<{ messages: Msg[]; hasMore: boolean } | { error: string }> => {
+    try {
+      const result = await gw.request<{ messages: GatewayTranscriptMessage[]; node_id: number; pagination: { has_more?: boolean } }>(
+        'session.lcm_expand',
+        { node_id: nodeId, session_id: ui.sid, max_tokens: 8000 }
+      )
+      const msgs = toTranscriptMessages(result.messages)
+      return { messages: msgs, hasMore: !!result.pagination?.has_more }
+    } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      return { error: String(e?.message ?? e) }
+    }
+  }, [gw, ui.sid])
 
   // LiveTodoPanel rides as a child of the latest user-message row so it
   // visually belongs to the prompt and follows it during scroll. -1 when
@@ -126,6 +143,7 @@ const TranscriptPane = memo(function TranscriptPane({
                   detailsMode={ui.detailsMode}
                   detailsModeCommandOverride={ui.detailsModeCommandOverride}
                   msg={row.msg}
+                  onLcmExpand={onLcmExpand}
                   prev={prevRenderedMsg(
                     i => transcript.virtualRows[i]?.msg,
                     row.index,

@@ -15,8 +15,16 @@ export interface GatewayCompletionItem {
   text: string
 }
 
+export interface LcmSummaryMeta {
+  depth_labels: string[]
+  depths: number[]
+  expand_hints: string[]
+  node_ids: number[]
+}
+
 export interface GatewayTranscriptMessage {
   context?: string
+  lcm_summary?: LcmSummaryMeta
   name?: string
   role: 'assistant' | 'system' | 'tool' | 'user'
   text?: string

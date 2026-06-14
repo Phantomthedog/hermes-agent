@@ -34,6 +34,7 @@ export const MessageLine = memo(function MessageLine({
   detailsModeCommandOverride = false,
   isStreaming = false,
   msg,
+  onLcmExpand,
   prev,
   sections,
   t,
@@ -62,6 +63,13 @@ export const MessageLine = memo(function MessageLine({
   // Collapse toggle for long system messages
   const systemIsLong = msg.role === 'system' && msg.text.length > SYSTEM_COLLAPSE_CHARS
   const [systemOpen, setSystemOpen] = useState(false)
+
+  // LCM summary expanded-content cache (component state, NOT in history)
+  const [lcmExpanded, setLcmExpanded] = useState(false)
+  const [lcmLoading, setLcmLoading] = useState(false)
+  const [lcmError, setLcmError] = useState<string | undefined>()
+  const [lcmExpandedMessages, setLcmExpandedMessages] = useState<Msg[]>([])
+  const [lcmHasMore, setLcmHasMore] = useState(false)
 
   if (msg.kind === 'trail' && msg.todos?.length) {
     return (
@@ -132,6 +140,80 @@ export const MessageLine = memo(function MessageLine({
   const content = (() => {
     if (msg.kind === 'slash') {
       return <Text color={t.color.muted}>{msg.text}</Text>
+    }
+
+    // ── LCM summary block: collapsed/expandable ──
+    if (msg.lcmSummary) {
+      const handleExpand = async () => {
+        if (lcmLoading) return
+        if (lcmExpanded) {
+          setLcmExpanded(false)
+          return
+        }
+        if (!onLcmExpand) return
+        setLcmLoading(true)
+        setLcmError(undefined)
+        try {
+          // Expand the first node (most relevant summary)
+          const nodeId = msg.lcmSummary!.nodeIds[0]
+          const result = await onLcmExpand(nodeId)
+          if ('error' in result) {
+            setLcmError(result.error)
+          } else {
+            setLcmExpandedMessages(result.messages)
+            setLcmHasMore(result.hasMore)
+            setLcmExpanded(true)
+          }
+        } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+          setLcmError(String(e?.message ?? e))
+        } finally {
+          setLcmLoading(false)
+        }
+      }
+
+      // Build preview: first 2 non-empty, non-marker lines of the summary
+      const summaryLines = msg.text
+        .split('\n')
+        .filter(l => l.trim() && !l.trim().startsWith('[Recent') && !l.trim().startsWith('[Session') && !l.trim().startsWith('[Depth') && !l.trim().startsWith('[Expand'))
+        .slice(0, 2)
+      const previewText = summaryLines.join('\n')
+      const depthLabel = msg.lcmSummary.depthLabels[0] ?? 'Summary'
+      const nodeCount = msg.lcmSummary.nodeIds.length
+
+      return (
+        <Box flexDirection="column" marginTop={leadGap ? 1 : 0}>
+          <Box onClick={handleExpand}>
+            <Text color={t.color.accent}>{lcmExpanded ? '▾ ' : '▸ '}</Text>
+            <Text color={t.color.accent} bold>{`[LCM: ${depthLabel} — ${nodeCount} node${nodeCount > 1 ? 's' : ''} compressed]`}</Text>
+            <Text color={t.color.muted}>{'  '}</Text>
+            <Text color={t.color.muted} dimColor>
+              {lcmLoading ? '⠋ loading…' : lcmExpanded ? 'click to collapse' : 'click to expand'}
+            </Text>
+          </Box>
+          {!lcmExpanded && previewText && (
+            <Box marginLeft={2}>
+              <Text color={t.color.muted} wrap="truncate-end">{previewText.slice(0, 200)}</Text>
+            </Box>
+          )}
+          {lcmError && (
+            <Box marginLeft={2}>
+              <Text color="red">{`⚠ ${lcmError}`}</Text>
+            </Box>
+          )}
+          {lcmExpanded && lcmExpandedMessages.length > 0 && (
+            <Box flexDirection="column" marginLeft={2} borderStyle="round" borderColor={t.color.muted} paddingX={1}>
+              {lcmExpandedMessages.map((em, i) => (
+                <Text key={i} color={em.role === 'assistant' ? t.color.text : t.color.muted} wrap="wrap">
+                  {em.text}
+                </Text>
+              ))}
+              {lcmHasMore && (
+                <Text color={t.color.muted} dimColor>{'… (more available)'}</Text>
+              )}
+            </Box>
+          )}
+        </Box>
+      )
     }
 
     // ── Collapsible long system message (system prompt, AGENTS.md, etc.) ──
@@ -252,6 +334,7 @@ interface MessageLineProps {
   // The block rendered directly above this one. Drives the group-boundary
   // lead gap (see domain/blockLayout.ts::hasLeadGap). Undefined at the top of
   // the transcript or when spacing is irrelevant.
+  onLcmExpand?: (nodeId: number) => Promise<{ messages: Msg[]; hasMore: boolean } | { error: string }>
   prev?: Msg
   sections?: SectionVisibility
   t: Theme
