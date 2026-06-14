@@ -287,3 +287,379 @@ def test_engine_collector_rejects_builtin_command_conflicts():
     # Must NOT have overwritten / registered against built-in /help.
     assert "help" not in manager._plugin_commands or \
            manager._plugin_commands["help"].get("plugin") != "context-engine:my-lcm"
+
+
+# ---------------------------------------------------------------------------
+# Per-agent context-engine cloning tests (local backport of PR #42683)
+# ---------------------------------------------------------------------------
+
+from agent.context_engine import ContextEngine
+
+
+class _ContractEngine(ContextEngine):
+    """Concrete engine for testing the clone_for_agent/shutdown host contract."""
+
+    def __init__(self, name: str = "contract-engine"):
+        self._name = name
+        self.clones: list[_ContractEngine] = []
+        self.update_model_calls: list[dict[str, object]] = []
+        self.session_start_calls: list[tuple[str, dict[str, object]]] = []
+        self.shutdown_count = 0
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def update_from_response(self, usage):
+        self.last_prompt_tokens = usage.get("prompt_tokens", 0)
+        self.last_completion_tokens = usage.get("completion_tokens", 0)
+        self.last_total_tokens = usage.get("total_tokens", 0)
+
+    def should_compress(self, prompt_tokens=None):
+        return False
+
+    def compress(self, messages, current_tokens=None, focus_topic=None):
+        return messages
+
+    def update_model(
+        self,
+        model: str,
+        context_length: int,
+        base_url: str = "",
+        api_key: str = "",
+        provider: str = "",
+        api_mode: str = "",
+    ):
+        self.update_model_calls.append({
+            "model": model,
+            "context_length": context_length,
+            "base_url": base_url,
+            "api_key": api_key,
+            "provider": provider,
+            "api_mode": api_mode,
+        })
+        self.context_length = context_length
+
+    def on_session_start(self, session_id: str, **kwargs) -> None:
+        self.session_start_calls.append((session_id, kwargs))
+
+    def shutdown(self) -> None:
+        self.shutdown_count += 1
+
+
+class _CloningContractEngine(_ContractEngine):
+    """Engine that returns a fresh clone per agent."""
+
+    def clone_for_agent(self) -> ContextEngine:
+        clone = _ContractEngine(self.name)
+        self.clones.append(clone)
+        return clone
+
+
+def _patch_agent_init_for_plugin_engine(monkeypatch, engine: ContextEngine) -> None:
+    """Patch agent_init so it uses *engine* as the plugin context engine."""
+    monkeypatch.setattr(
+        "hermes_cli.config.load_config",
+        lambda: {
+            "context": {"engine": engine.name},
+            "model": {"context_length": 200_000},
+        },
+    )
+    monkeypatch.setattr(
+        "hermes_cli.plugins.get_plugin_context_engine",
+        lambda: engine,
+    )
+    monkeypatch.setattr(
+        "agent.model_metadata.get_model_context_length",
+        lambda *args, **kwargs: 200_000,
+    )
+    monkeypatch.setattr("run_agent.OpenAI", MagicMock(return_value=MagicMock()))
+
+
+# -- A. Cloning context engine ---------------------------------------------
+
+
+def test_agent_init_clones_plugin_context_engine_per_agent(monkeypatch):
+    """Mutable plugin engines can provide isolated per-AIAgent runtime state."""
+    registered = _CloningContractEngine()
+    _patch_agent_init_for_plugin_engine(monkeypatch, registered)
+
+    agent = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-s1",
+        platform="telegram",
+        gateway_session_key="agent:main:telegram:dm:42",
+    )
+    clone = registered.clones[0]
+    try:
+        assert getattr(agent, "context_compressor") is clone
+        assert getattr(agent, "_owns_context_engine") is True
+        # update_model and on_session_start ran on the clone, NOT the prototype
+        assert registered.update_model_calls == []
+        assert registered.session_start_calls == []
+        assert clone.update_model_calls[0]["context_length"] == 200_000
+        assert clone.session_start_calls[0][0] == "agent-s1"
+        assert clone.session_start_calls[0][1]["conversation_id"] == "agent:main:telegram:dm:42"
+    finally:
+        agent.close()
+
+    # After close: clone was shut down exactly once, prototype untouched.
+    assert clone.shutdown_count == 1
+    assert registered.shutdown_count == 0
+    assert getattr(agent, "_owns_context_engine") is False
+
+
+# -- B. Non-cloning engine (backward compatible) ---------------------------
+
+
+def test_agent_close_does_not_shutdown_shared_plugin_context_engine(monkeypatch):
+    """The default clone_for_agent() keeps backward-compatible shared engines alive."""
+    shared = _ContractEngine()
+    _patch_agent_init_for_plugin_engine(monkeypatch, shared)
+
+    agent = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-s2",
+        platform="weixin",
+        gateway_session_key="agent:main:weixin:dm:77",
+    )
+    try:
+        assert getattr(agent, "context_compressor") is shared
+        assert getattr(agent, "_owns_context_engine") is False
+    finally:
+        agent.close()
+
+    # Shared engine was NOT shut down.
+    assert shared.shutdown_count == 0
+
+
+# -- C. Two concurrent agents with different cloned engines ----------------
+
+
+def test_two_agents_receive_separate_cloned_engines(monkeypatch):
+    """Two agents get separate LCM engine objects sharing the same store."""
+    registered = _CloningContractEngine()
+    _patch_agent_init_for_plugin_engine(monkeypatch, registered)
+
+    agent_a = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-A",
+        platform="telegram",
+        gateway_session_key="agent:main:telegram:dm:1",
+    )
+    agent_b = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-B",
+        platform="discord",
+        gateway_session_key="agent:main:discord:dm:2",
+    )
+    clone_a = registered.clones[0]
+    clone_b = registered.clones[1]
+
+    try:
+        # Different engine objects
+        assert clone_a is not clone_b
+        assert agent_a.context_compressor is clone_a
+        assert agent_b.context_compressor is clone_b
+
+        # Both agents own their clones
+        assert agent_a._owns_context_engine is True
+        assert agent_b._owns_context_engine is True
+
+        # Different session IDs via on_session_start
+        assert clone_a.session_start_calls[0][0] == "agent-A"
+        assert clone_b.session_start_calls[0][0] == "agent-B"
+
+        # Different conversation IDs
+        assert clone_a.session_start_calls[0][1]["conversation_id"] == "agent:main:telegram:dm:1"
+        assert clone_b.session_start_calls[0][1]["conversation_id"] == "agent:main:discord:dm:2"
+
+        # Prototype never received direct calls
+        assert registered.update_model_calls == []
+        assert registered.session_start_calls == []
+    finally:
+        agent_a.close()
+        agent_b.close()
+
+    # Each clone shut down exactly once; prototype never shut down.
+    assert clone_a.shutdown_count == 1
+    assert clone_b.shutdown_count == 1
+    assert registered.shutdown_count == 0
+
+
+def test_closing_one_agent_does_not_affect_the_other_clone(monkeypatch):
+    """Compression/finalization for A cannot affect B's clone."""
+    registered = _CloningContractEngine()
+    _patch_agent_init_for_plugin_engine(monkeypatch, registered)
+
+    agent_a = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-A",
+        platform="telegram",
+        gateway_session_key="agent:main:telegram:dm:1",
+    )
+    agent_b = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-B",
+        platform="discord",
+        gateway_session_key="agent:main:discord:dm:2",
+    )
+    clone_a = registered.clones[0]
+    clone_b = registered.clones[1]
+
+    # Close A first
+    agent_a.close()
+    assert clone_a.shutdown_count == 1
+    # B's engine is still alive
+    assert clone_b.shutdown_count == 0
+    assert agent_b._owns_context_engine is True
+
+    # B can still use its engine
+    agent_b.context_compressor.update_from_response({"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150})
+    assert clone_b.last_prompt_tokens == 100
+
+    agent_b.close()
+    assert clone_b.shutdown_count == 1
+    assert registered.shutdown_count == 0
+
+
+# -- D. Command routing: session-level tools resolve to the active clone ---
+
+
+def test_context_engine_tools_route_to_active_agent_clone(monkeypatch):
+    """lcm_status and other tools go through agent.context_compressor (the clone)."""
+    registered = _CloningContractEngine()
+    _patch_agent_init_for_plugin_engine(monkeypatch, registered)
+
+    agent = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-s1",
+        platform="telegram",
+        gateway_session_key="agent:main:telegram:dm:42",
+    )
+    clone = registered.clones[0]
+
+    try:
+        # The agent's context_compressor IS the clone, not the prototype.
+        # Tool dispatch goes through agent.context_compressor.handle_tool_call()
+        # so tools automatically resolve to the correct per-agent engine.
+        assert agent.context_compressor is clone
+        assert agent.context_compressor is not registered
+    finally:
+        agent.close()
+
+
+# -- E. clone_for_agent error handling -------------------------------------
+
+
+def test_clone_for_agent_exception_falls_back_to_registered(monkeypatch):
+    """If clone_for_agent() raises, fall back to the registered engine."""
+    class _BrokenCloneEngine(_ContractEngine):
+        def clone_for_agent(self):
+            raise RuntimeError("clone failed")
+
+    broken = _BrokenCloneEngine()
+    _patch_agent_init_for_plugin_engine(monkeypatch, broken)
+
+    agent = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-s1",
+        platform="telegram",
+        gateway_session_key="agent:main:telegram:dm:42",
+    )
+    try:
+        # Falls back to the registered engine
+        assert agent.context_compressor is broken
+        assert agent._owns_context_engine is False
+    finally:
+        agent.close()
+
+    # Closing doesn't shut it down (shared engine)
+    assert broken.shutdown_count == 0
+
+
+def test_clone_for_agent_returns_none_falls_back_to_registered(monkeypatch):
+    """If clone_for_agent() returns None, fall back to the registered engine."""
+    class _NoneCloneEngine(_ContractEngine):
+        def clone_for_agent(self):
+            return None
+
+    none_engine = _NoneCloneEngine()
+    _patch_agent_init_for_plugin_engine(monkeypatch, none_engine)
+
+    agent = AIAgent(
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        provider="openai",
+        model="test-model",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+        enabled_toolsets=[],
+        session_id="agent-s1",
+        platform="telegram",
+        gateway_session_key="agent:main:telegram:dm:42",
+    )
+    try:
+        assert agent.context_compressor is none_engine
+        assert agent._owns_context_engine is False
+    finally:
+        agent.close()
+
+    assert none_engine.shutdown_count == 0
