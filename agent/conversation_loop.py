@@ -4483,6 +4483,26 @@ def run_conversation(
             )
         except Exception:
             pass  # Title generation is best-effort
+
+    # Diagnostic: log when turn completes with active todos so we can
+    # establish whether the model regularly forgets its final todo
+    # update. This is observational only — no auto-fix yet.
+    if completed and hasattr(agent, '_todo_store') and agent._todo_store.has_items():
+        try:
+            _td = agent._todo_store.read()
+            _pending = sum(1 for i in _td if i["status"] == "pending")
+            _in_prog = sum(1 for i in _td if i["status"] == "in_progress")
+            if _pending or _in_prog:
+                logger.info(
+                    "turn completed with active todos: pending=%d in_progress=%d "
+                    "session=%s model=%s",
+                    _pending, _in_prog,
+                    agent.session_id or "none",
+                    agent.model,
+                )
+        except Exception:
+            pass
+
     return result
 
 __all__ = ["run_conversation"]
