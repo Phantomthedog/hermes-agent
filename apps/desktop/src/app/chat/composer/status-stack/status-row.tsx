@@ -42,8 +42,26 @@ function leadingGlyph(item: ComposerStatusItem, s: Translations['statusStack']):
 
   if (item.todoStatus && item.todoStatus !== 'in_progress') {
     const glyph = TODO_GLYPHS[item.todoStatus]
-
     return <Codicon className={glyph.tone} name={glyph.icon} size="0.8rem" />
+  }
+
+  // in_progress: live → animated spinner, archived → static dot (#42662)
+  if (item.todoStatus === 'in_progress') {
+    if (item.isLive) {
+      return (
+        <GlyphSpinner
+          ariaLabel={s.running}
+          className="text-[0.9rem] leading-none text-muted-foreground/80"
+          spinner="braille"
+        />
+      )
+    }
+    return (
+      <span
+        aria-hidden
+        className="size-1.5 rounded-full bg-ring/70"
+      />
+    )
   }
 
   if (item.state === 'running') {
@@ -132,7 +150,9 @@ export const StatusItemRow = memo(function StatusItemRow({ item, onDismiss, onOp
               ? 'text-destructive/90'
               : item.todoStatus && item.todoStatus !== 'in_progress'
                 ? 'text-muted-foreground/75'
-                : 'text-foreground/92'
+                : item.todoStatus === 'in_progress' && !item.isLive
+                  ? 'text-muted-foreground/75'
+                  : 'text-foreground/92'
           )}
         >
           {item.title}

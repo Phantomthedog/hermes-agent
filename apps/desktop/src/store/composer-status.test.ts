@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { $backgroundStatusBySession, dismissBackgroundProcess, reconcileBackgroundProcesses } from './composer-status'
+import { $backgroundStatusBySession, $statusItemsBySession, dismissBackgroundProcess, reconcileBackgroundProcesses } from './composer-status'
+import { setSessionTodos } from './todos'
+import { setWorkingSessionIds } from './session'
 
 const SID = 'sess-1'
 
@@ -93,7 +95,66 @@ describe('reconcileBackgroundProcesses', () => {
   it('drops the session key entirely when the last row goes away', () => {
     reconcileBackgroundProcesses(SID, [running('a')])
     reconcileBackgroundProcesses(SID, [])
-
     expect($backgroundStatusBySession.get()).toEqual({})
+  })
+})
+
+describe('$statusItemsBySession todo isLive', () => {
+  const SID = 'sess-todo-live'
+
+  beforeEach(() => {
+    $backgroundStatusBySession.set({})
+    setSessionTodos(SID, [])
+    setWorkingSessionIds([])
+  })
+
+  it('marks todo items as live when session is in workingSessionIds', () => {
+    setWorkingSessionIds([SID])
+    setSessionTodos(SID, [
+      { content: 'Step one', id: 's1', status: 'in_progress' },
+      { content: 'Step two', id: 's2', status: 'pending' }
+    ])
+
+    const items = $statusItemsBySession.get()[SID] ?? []
+    expect(items).toHaveLength(2)
+    expect(items.every(i => i.isLive === true)).toBe(true)
+  })
+
+  it('marks todo items as archived when session is NOT in workingSessionIds', () => {
+    setWorkingSessionIds([])
+    setSessionTodos(SID, [
+      { content: 'Step one', id: 's1', status: 'completed' },
+      { content: 'Step two', id: 's2', status: 'in_progress' }
+    ])
+
+    const items = $statusItemsBySession.get()[SID] ?? []
+    expect(items).toHaveLength(2)
+    expect(items.every(i => i.isLive === false)).toBe(true)
+  })
+
+  it('transitions isLive from true to false when session stops working', () => {
+    setWorkingSessionIds([SID])
+    setSessionTodos(SID, [
+      { content: 'Work', id: 'w1', status: 'in_progress' }
+    ])
+
+    const itemsBefore = $statusItemsBySession.get()[SID] ?? []
+    expect(itemsBefore[0]!.isLive).toBe(true)
+
+    // Session finishes
+    setWorkingSessionIds([])
+
+    const itemsAfter = $statusItemsBySession.get()[SID] ?? []
+    expect(itemsAfter[0]!.isLive).toBe(false)
+  })
+
+  it('non-todo items do not have isLive set', () => {
+    setWorkingSessionIds([SID])
+    reconcileBackgroundProcesses(SID, [running('bg-1')])
+
+    const items = $statusItemsBySession.get()[SID] ?? []
+    const bgItem = items.find(i => i.type === 'background')
+    expect(bgItem).toBeDefined()
+    expect(bgItem!.isLive).toBeUndefined()
   })
 })
