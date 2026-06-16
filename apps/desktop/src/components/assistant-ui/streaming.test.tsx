@@ -507,6 +507,38 @@ describe('assistant-ui streaming renderer', () => {
     expect(container.querySelector('[data-slot="aui_todo-hoisted"]')).toBeNull()
   })
 
+  it('renders archived todo summary after turn completes', () => {
+    const { container } = render(
+      <TodoHarness
+        message={assistantTodoMessage([
+          { content: 'Gather ingredients', id: 'prep', status: 'completed' },
+          { content: 'Boil water', id: 'boil', status: 'completed' },
+          { content: 'Serve', id: 'serve', status: 'completed' }
+        ], false)}
+      />
+    )
+
+    // Completed summary should be visible
+    expect(container.textContent).toContain('Completed 3/3')
+    // No hoisted panel (that's for the old architecture)
+    expect(container.querySelector('[data-slot="aui_todo-hoisted"]')).toBeNull()
+  })
+
+  it('does not render archived todo summary while turn is running', () => {
+    const { container } = render(
+      <TodoHarness
+        message={assistantTodoMessage([
+          { content: 'Step one', id: 's1', status: 'in_progress' },
+          { content: 'Step two', id: 's2', status: 'pending' }
+        ], true)}
+      />
+    )
+
+    // While running, the inline summary should NOT appear
+    expect(container.textContent).not.toContain('completed')
+    expect(container.textContent).not.toContain('Completed')
+  })
+
   it('renders completed image generation results in the tool slot', async () => {
     const { container } = render(<MessageHarness message={assistantImageMessage()} />)
 

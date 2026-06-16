@@ -429,10 +429,87 @@ const ImageGenerateTool: FC<ToolCallMessagePartProps> = ({ args, result }) => {
   )
 }
 
+const ArchivedTodoSummary: FC<{ args: Record<string, unknown> | undefined; result: unknown }> = ({
+  args,
+  result,
+}) => {
+  const [open, setOpen] = useState(false)
+
+  // Parse todos from result (authoritative) or args (fallback).
+  const todos = useMemo(() => {
+    const parse = (v: unknown): Array<{ content: string; id: string; status: string }> | null => {
+      if (!v) return null
+      const raw = typeof v === 'string' ? (() => { try { return JSON.parse(v) } catch { return null } })() : v
+      if (!raw) return null
+      const arr = Array.isArray(raw) ? raw : (raw as Record<string, unknown>).todos
+      if (!Array.isArray(arr)) return null
+      return arr.filter(
+        (t): t is { content: string; id: string; status: string } =>
+          typeof t === 'object' && t !== null && 'status' in t
+      )
+    }
+    return parse(result) ?? parse(args) ?? []
+  }, [args, result])
+
+  if (!todos.length) return null
+
+  const completed = todos.filter(t => t.status === 'completed' || t.status === 'cancelled').length
+  const total = todos.length
+  const allDone = completed === total
+
+  const statusGlyph = (status: string) => {
+    switch (status) {
+      case 'completed': return '✓'
+      case 'cancelled': return '–'
+      case 'in_progress': return '→'
+      default: return '○'
+    }
+  }
+
+  return (
+    <div className="mt-1 rounded-md border border-border/40 bg-muted/20 px-3 py-1.5 text-[0.78rem] leading-5 text-muted-foreground/80">
+      <button
+        className="flex w-full items-center gap-1.5 text-left hover:text-foreground/90 focus-visible:outline-none"
+        onClick={() => setOpen(o => !o)}
+        type="button"
+      >
+        <span className="shrink-0 text-foreground/60">
+          {allDone ? '✓' : '○'}
+        </span>
+        <span className="min-w-0 flex-1 truncate">
+          {allDone ? `Completed ${completed}/${total}` : `${completed}/${total} completed`}
+        </span>
+        <span className="shrink-0 text-[0.65rem] text-muted-foreground/50">
+          {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open && (
+        <ul className="mt-1 space-y-0.5 pl-5">
+          {todos.map(t => (
+            <li key={t.id} className="flex items-start gap-1.5">
+              <span className="shrink-0 text-[0.7rem] leading-5 text-muted-foreground/60">
+                {statusGlyph(t.status)}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{t.content}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 const ChainToolFallback: FC<ToolCallMessagePartProps> = props => {
-  // todo parts are hoisted to a dedicated panel above the message content.
+  // When the message is still running, the composer status stack handles
+  // live todo display — suppress the inline rendering.
+  // When the message has completed, render a collapsed summary so the
+  // completed checklist persists in the conversation history (#42662).
+  const messageRunning = useAuiState(s => s.message.status?.type === 'running')
   if (props.toolName === 'todo') {
-    return null
+    if (messageRunning) {
+      return null
+    }
+    return <ArchivedTodoSummary args={props.args} result={props.result} />
   }
 
   if (props.toolName === 'image_generate') {
