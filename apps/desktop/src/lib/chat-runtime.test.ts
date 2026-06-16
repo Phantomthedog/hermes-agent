@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ComposerAttachment } from '@/store/composer'
-import { coerceThinkingText, optimisticAttachmentRef, parseCommandDispatch } from './chat-runtime'
+import { coerceThinkingText, optimisticAttachmentRef, parseCommandDispatch, parseSlashCommand } from './chat-runtime'
 
 const DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANS'
 
@@ -133,5 +133,41 @@ describe('parseCommandDispatch', () => {
 
   it('returns null for unknown type', () => {
     expect(parseCommandDispatch({ type: 'unknown' })).toBeNull()
+  })
+})
+
+describe('parseSlashCommand', () => {
+  it('parses a simple slash command', () => {
+    expect(parseSlashCommand('/goal build a rocket')).toEqual({ name: 'goal', arg: 'build a rocket' })
+  })
+
+  it('returns empty name for bare slash', () => {
+    expect(parseSlashCommand('/')).toEqual({ name: '', arg: '' })
+  })
+
+  it('returns empty name for whitespace-only after slash', () => {
+    expect(parseSlashCommand('/   ')).toEqual({ name: '', arg: '' })
+  })
+
+  it('preserves multiline args (#41323)', () => {
+    expect(parseSlashCommand('/goal first line\nsecond line')).toEqual({
+      name: 'goal',
+      arg: 'first line\nsecond line'
+    })
+  })
+
+  it('preserves internal newlines with leading/trailing whitespace trimmed', () => {
+    expect(parseSlashCommand('/goal  \n  hello  \n  world  \n')).toEqual({
+      name: 'goal',
+      arg: 'hello  \n  world'
+    })
+  })
+
+  it('handles command with only a name and no arg', () => {
+    expect(parseSlashCommand('/status')).toEqual({ name: 'status', arg: '' })
+  })
+
+  it('strips leading slashes', () => {
+    expect(parseSlashCommand('///goal test')).toEqual({ name: 'goal', arg: 'test' })
   })
 })
