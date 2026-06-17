@@ -1,0 +1,354 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - link "logo alchemist films text only small" [ref=e5] [cursor=pointer]:
+          - /url: https://alchemist-films.com
+          - img "logo alchemist films text only small" [ref=e6]
+        - link:
+          - /url: https://api.whatsapp.com/send?phone=8615067419110&text=Chat with us on WhatsApp about your project
+          - img [ref=e7] [cursor=pointer]
+      - list [ref=e11]:
+        - listitem [ref=e12]:
+          - link "Works" [ref=e13] [cursor=pointer]:
+            - /url: https://alchemist-films.com/works
+        - listitem [ref=e14]:
+          - link "News" [ref=e15] [cursor=pointer]:
+            - /url: https://alchemist-films.com/news
+        - listitem [ref=e16]:
+          - link "About" [ref=e17] [cursor=pointer]:
+            - /url: https://alchemist-films.com/about
+        - listitem [ref=e18]:
+          - link "Contact" [ref=e19] [cursor=pointer]:
+            - /url: https://alchemist-films.com/contact
+    - link:
+      - /url: https://api.whatsapp.com/send?phone=8615067419110&text=Chat with us on WhatsApp about your project
+      - img [ref=e20] [cursor=pointer]
+  - generic [ref=e24]:
+    - button "Play Full Reel" [ref=e27]
+    - heading "China Video Production & Fixer Services" [level=1] [ref=e28]
+    - heading "We produce high-impact commercial and documentary videos across China." [level=2] [ref=e29]:
+      - text: We produce high-impact
+      - link "commercial" [ref=e31] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/commercials
+      - text: and
+      - link "documentary" [ref=e33] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/documentaries
+      - text: videos across China.
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - link "tuborg cleanbandit china" [ref=e36] [cursor=pointer]:
+          - /url: https://alchemist-films.com/works/documentaries
+          - img "tuborg cleanbandit china" [ref=e37]
+        - paragraph [ref=e38]:
+          - link "Documentaries" [ref=e39] [cursor=pointer]:
+            - /url: https://alchemist-films.com/works/documentaries
+      - generic [ref=e40]:
+        - link "father carrying son" [ref=e41] [cursor=pointer]:
+          - /url: https://alchemist-films.com/works/commercials
+          - img "father carrying son" [ref=e42]
+        - paragraph [ref=e43]:
+          - link "Commercials" [ref=e44] [cursor=pointer]:
+            - /url: https://alchemist-films.com/works/commercials
+  - generic [ref=e46]:
+    - heading "Commercial Works" [level=1] [ref=e47]
+    - paragraph [ref=e48]: From fashion and tech to FMCG and real estate, we produce brand and campaign videos across China.
+    - generic [ref=e49]:
+      - link "Nike React By You Nike React By You Nike/Social Media" [ref=e51] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/commercials/nike-react-by-you
+        - img "Nike React By You" [ref=e52]
+        - paragraph [ref=e53]: Nike React By You
+        - paragraph [ref=e54]: Nike/Social Media
+      - link "Google Marketing Livestream Google Marketing Livestream Google/Promotion Video" [ref=e56] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/commercials/google-marketing-livestream
+        - img "Google Marketing Livestream" [ref=e57]
+        - paragraph [ref=e58]: Google Marketing Livestream
+        - paragraph [ref=e59]: Google/Promotion Video
+      - link "Huawei Flagship Opening Huawei Flagship Opening Huawei/Shop opening video" [ref=e61] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/commercials/huawei-flagship-opening
+        - img "Huawei Flagship Opening" [ref=e62]
+        - paragraph [ref=e63]: Huawei Flagship Opening
+        - paragraph [ref=e64]: Huawei/Shop opening video
+      - link "Wanda Fiba World Cup Little Champions Wanda Fiba World Cup Little Champions Wanda Group/FIBA/Advertisement" [ref=e66] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/commercials/wanda-fiba-world-cup-little-champions
+        - img "Wanda Fiba World Cup Little Champions" [ref=e67]
+        - paragraph [ref=e68]: Wanda Fiba World Cup Little Champions
+        - paragraph [ref=e69]: Wanda Group/FIBA/Advertisement
+      - link "AMI Paris Art Cities AMI Paris Art Cities AMI Paris/Fashion/Art" [ref=e71] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/commercials/ami-paris-art-cities
+        - img "AMI Paris Art Cities" [ref=e72]
+        - paragraph [ref=e73]: AMI Paris Art Cities
+        - paragraph [ref=e74]: AMI Paris/Fashion/Art
+      - link "TUBORG CLEANBANDIT Henry Lau CHINA TUBORG CLEANBANDIT Henry Lau CHINA TUBORG/CLEANBANDIT/Henry Lau" [ref=e76] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/commercials/tuborg-cleanbandit-henry-lau-china
+        - img "TUBORG CLEANBANDIT Henry Lau CHINA" [ref=e77]
+        - paragraph [ref=e78]: TUBORG CLEANBANDIT Henry Lau CHINA
+        - paragraph [ref=e79]: TUBORG/CLEANBANDIT/Henry Lau
+  - generic [ref=e81]:
+    - heading "Documentary Works" [level=1] [ref=e82]
+    - paragraph [ref=e83]: From social issues to innovation and business, we support documentary teams filming in China.
+    - generic [ref=e84]:
+      - link "Ascension-Oscar Nominated for Best Doc 2022 Ascension-Oscar Nominated for Best Doc 2022" [ref=e86] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/documentaries/ascension-oscar-nominated-for-best-doc-2022
+        - img "Ascension-Oscar Nominated for Best Doc 2022"
+        - paragraph [ref=e87]: Ascension-Oscar Nominated for Best Doc 2022
+      - link "Sky River of the Himalayas Sky River of the Himalayas" [ref=e89] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/documentaries/the-brahmaputra-sky-river-of-the-himalayas
+        - img "Sky River of the Himalayas"
+        - paragraph [ref=e90]: Sky River of the Himalayas
+      - link "How To Let Go of The World and Love All The Things Climate Can’t Change How To Let Go of The World and Love All The Things Climate Can’t Change" [ref=e92] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/documentaries/how-to-let-go-of-the-world-and-love-all-the-things-climate-cant-change
+        - img "How To Let Go of The World and Love All The Things Climate Can’t Change"
+        - paragraph [ref=e93]: How To Let Go of The World and Love All The Things Climate Can’t Change
+      - link "The Great Wall (global version) The Great Wall (global version)" [ref=e95] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/documentaries/the-great-wall-documentary-production
+        - img "The Great Wall (global version)"
+        - paragraph [ref=e96]: The Great Wall (global version)
+      - link "Beauty and the Feast Discovery Network Beauty and the Feast Discovery Network" [ref=e98] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/documentaries/beauty-and-the-feast-discovery-network
+        - img "Beauty and the Feast Discovery Network"
+        - paragraph [ref=e99]: Beauty and the Feast Discovery Network
+      - link "ECO Polis China ECO Polis China" [ref=e101] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/documentaries/eco-polis-china
+        - img "ECO Polis China"
+        - paragraph [ref=e102]: ECO Polis China
+      - 'link "Vice on HBO: Synthetic Drugs Vice on HBO: Synthetic Drugs" [ref=e104] [cursor=pointer]':
+        - /url: https://alchemist-films.com/works/documentaries/vice-on-hbo-synthetic-drugs
+        - 'img "Vice on HBO: Synthetic Drugs"'
+        - paragraph [ref=e105]: "Vice on HBO: Synthetic Drugs"
+      - link "Temasek Connection Temasek Connection" [ref=e107] [cursor=pointer]:
+        - /url: https://alchemist-films.com/works/documentaries/temasek-connection
+        - img "Temasek Connection"
+        - paragraph [ref=e108]: Temasek Connection
+  - generic [ref=e113]:
+    - heading "Our Video Production Awards" [level=2] [ref=e114]
+    - generic [ref=e115]:
+      - generic [ref=e116]:
+        - img "idfa logo" [ref=e117]
+        - paragraph [ref=e118]:
+          - generic [ref=e119]: Official Selection
+          - generic [ref=e120]: IDFA 2019
+      - generic [ref=e121]:
+        - img "sundance logo" [ref=e122]
+        - paragraph [ref=e123]:
+          - generic [ref=e124]: Official Selection
+          - generic [ref=e125]: Sundance 2018
+      - generic [ref=e126]:
+        - img "oscar nominated" [ref=e127]
+        - paragraph [ref=e128]:
+          - generic [ref=e129]: Nominated
+          - generic [ref=e130]: Academy Awards 2020
+      - generic [ref=e131]:
+        - img "tribeca film festival" [ref=e132]
+        - paragraph [ref=e133]:
+          - generic [ref=e134]: Winner
+          - generic [ref=e135]: Tribeca Film festival 2021
+  - generic [ref=e136]:
+    - heading "Trusted China Video Fixer" [level=2] [ref=e137]
+    - list [ref=e139]:
+      - listitem [ref=e140] [cursor=pointer]: The Why
+    - paragraph [ref=e142]:
+      - text: At Alchemist Films, we support international brands, broadcasters, and filmmakers with
+      - link "China video production" [ref=e143] [cursor=pointer]:
+        - /url: https://alchemist-films.com/china-video-production-fixer
+      - text: and
+      - link "fixer services" [ref=e144] [cursor=pointer]:
+        - /url: https://alchemist-films.com/services/video-production-coordination-china
+      - text: . Our bilingual team handles permits, location coordination, local crews, equipment, and on-set production management across major cities including
+      - link "Shanghai" [ref=e145] [cursor=pointer]:
+        - /url: https://alchemist-films.com/shanghai-video-production-fixer
+      - text: ","
+      - link "Beijing" [ref=e146] [cursor=pointer]:
+        - /url: https://alchemist-films.com/Beijing-video-production-fixer
+      - text: ","
+      - link "Chengdu" [ref=e147] [cursor=pointer]:
+        - /url: https://alchemist-films.com/chengdu-video-production-fixer
+      - text: ", and"
+      - link "Shenzhen" [ref=e148] [cursor=pointer]:
+        - /url: https://alchemist-films.com/shenzhen-video-production-fixer
+      - text: . Whether you’re producing a commercial campaign, branded content, or a documentary, we keep your shoot compliant, efficient, and on schedule. We also provide
+      - link "professional equipment rental across China" [ref=e149] [cursor=pointer]:
+        - /url: https://alchemist-films.com/services/film-video-equipment-rental-china
+      - text: to support every stage of production.
+  - generic [ref=e151]:
+    - generic [ref=e152]:
+      - heading "Our Video Production Services" [level=2] [ref=e153]
+      - list [ref=e154]:
+        - listitem [ref=e155] [cursor=pointer]:
+          - link "Concept Development" [ref=e156]:
+            - /url: https://alchemist-films.com/services/concept-development-video-china
+        - listitem [ref=e157] [cursor=pointer]:
+          - link "Visual Styling" [ref=e158]:
+            - /url: https://alchemist-films.com/services/creative-direction-visual-video-china
+        - listitem [ref=e159] [cursor=pointer]:
+          - link "Location Scouting" [ref=e160]:
+            - /url: https://alchemist-films.com/services/location-scouting-permits-china-video
+        - listitem [ref=e161] [cursor=pointer]:
+          - link "Casting" [ref=e162]:
+            - /url: https://alchemist-films.com/services/actor-model-casting-china
+        - listitem [ref=e163] [cursor=pointer]:
+          - link "Equipment Rental" [ref=e164]:
+            - /url: https://alchemist-films.com/services/film-video-equipment-rental-china
+        - listitem [ref=e165] [cursor=pointer]:
+          - link "Permits & Clearances" [ref=e166]:
+            - /url: https://alchemist-films.com/services/visa-permits-custom-china
+        - listitem [ref=e167] [cursor=pointer]:
+          - link "Production Coordination" [ref=e168]:
+            - /url: https://alchemist-films.com/services/video-production-coordination-china
+        - listitem [ref=e169] [cursor=pointer]:
+          - link "Post-Production" [ref=e170]:
+            - /url: https://alchemist-films.com/services/post-production-service-china
+        - listitem [ref=e171] [cursor=pointer]:
+          - link "Live Event Coverage" [ref=e172]:
+            - /url: https://alchemist-films.com/services/event-video-photography-china
+        - listitem [ref=e173] [cursor=pointer]:
+          - link "Aerial Videography" [ref=e174]:
+            - /url: https://alchemist-films.com/services/aerial-drone-fpv-china
+        - listitem [ref=e175] [cursor=pointer]:
+          - link "Localization & Voiceover" [ref=e176]:
+            - /url: https://alchemist-films.com/services/voiceover-transcription-translation-china
+        - listitem [ref=e177] [cursor=pointer]:
+          - link "360° Video & VR" [ref=e178]:
+            - /url: https://alchemist-films.com/services/360-video-vr-china
+        - listitem [ref=e179] [cursor=pointer]:
+          - link "Photography Service" [ref=e180]:
+            - /url: https://alchemist-films.com/services/photography-service-china
+      - paragraph [ref=e181]:
+        - link "Learn More" [ref=e182] [cursor=pointer]:
+          - /url: https://alchemist-films.com/about
+    - generic [ref=e183]:
+      - paragraph [ref=e184]: From location scouting and crew booking to permits, logistics, and equipment, we organize and execute productions that run smoothly under real-world conditions in China.
+      - link "fire burning hair" [ref=e185] [cursor=pointer]:
+        - /url: https://alchemist-films.com/about
+        - img "fire burning hair" [ref=e186]
+  - generic [ref=e188]:
+    - generic [ref=e189]:
+      - heading "Planning a shoot in China?" [level=4] [ref=e190]
+      - paragraph [ref=e191]: Email your brief.
+      - generic [ref=e192]:
+        - paragraph [ref=e193]: Email
+        - paragraph [ref=e194]:
+          - link "hello@alchemist-films.com" [ref=e195] [cursor=pointer]:
+            - /url: mailto:hello@alchemist-films.com?subject=Need%20production%20support%20in%20China
+        - paragraph [ref=e196]: Phone / WhatsApp
+        - paragraph [ref=e197]:
+          - link "+86 150-674-19110" [ref=e198] [cursor=pointer]:
+            - /url: https://wa.me/08615067419110
+    - generic [ref=e200]:
+      - generic [ref=e204]:
+        - img "Nike Logo" [ref=e205]
+        - img "pbs cleaned 1" [ref=e206]
+        - img "Wanda Group logo.svg" [ref=e207]
+        - img "Heineken logo landscape 1" [ref=e208]
+        - img "PUMA logo" [ref=e209]
+        - img "pepsicologo small 1" [ref=e210]
+        - img "vice logosmall 1" [ref=e211]
+        - img "volvo logo small 1" [ref=e212]
+      - generic [ref=e213]:
+        - heading "Social" [level=2] [ref=e214]
+        - generic [ref=e215]:
+          - link "LinkedIn" [ref=e216] [cursor=pointer]:
+            - /url: https://www.linkedin.com/company/alchemist-films/
+          - link "Instagram" [ref=e217] [cursor=pointer]:
+            - /url: https://www.instagram.com/alchemistfilmschina/
+          - link "Facebook" [ref=e218] [cursor=pointer]:
+            - /url: https://www.facebook.com/alchemistfilms/
+          - link "Twitter" [ref=e219] [cursor=pointer]:
+            - /url: https://twitter.com/alchemist_films
+  - generic [ref=e221]:
+    - generic [ref=e222]:
+      - generic [ref=e223]:
+        - link "Documentaries" [ref=e224] [cursor=pointer]:
+          - /url: https://alchemist-films.com/works/documentaries
+          - heading "Documentaries" [level=2] [ref=e225]
+        - generic [ref=e226]:
+          - link "Technology" [ref=e227] [cursor=pointer]:
+            - /url: https://alchemist-films.com/documentaries/technology-documentary-china-video-production
+          - link "Fashion & Culture" [ref=e228] [cursor=pointer]:
+            - /url: https://alchemist-films.com/documentaries/fashion-cultural-documentary-china-video-production
+          - link "Travel & Adventure" [ref=e229] [cursor=pointer]:
+            - /url: https://alchemist-films.com/documentaries/travel-adventure-documentary-china-video-production
+          - link "Food & Culinary" [ref=e230] [cursor=pointer]:
+            - /url: https://alchemist-films.com/documentaries/food-culinary-documentary-china-video-production
+          - link "Wildlife & Nature" [ref=e231] [cursor=pointer]:
+            - /url: https://alchemist-films.com/documentaries/wildlife-nature-documentary-china-video-production
+          - link "Art & Design" [ref=e232] [cursor=pointer]:
+            - /url: https://alchemist-films.com/documentaries/art-design-documentary-china-video-production
+          - link "Economics" [ref=e233] [cursor=pointer]:
+            - /url: https://alchemist-films.com/documentaries/economics-documentary-china-video-production
+          - link "Environmental" [ref=e234] [cursor=pointer]:
+            - /url: https://alchemist-films.com/documentaries/environmental-documentary-china-video-production
+      - generic [ref=e235]:
+        - link "Commercials" [ref=e236] [cursor=pointer]:
+          - /url: https://alchemist-films.com/works/commercials
+          - heading "Commercials" [level=2] [ref=e237]
+        - generic [ref=e238]:
+          - link "Food & Drinks" [ref=e239] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/food-drinks-video-production-china
+          - link "Fashion & Apparel" [ref=e240] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/fashion-appeals-video-production-china
+          - link "Travel" [ref=e241] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/travel-culture-video-china
+          - link "Pharmaceutical" [ref=e242] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/pharmaceutical-wellness-china-video-production
+          - link "Electronics" [ref=e243] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/electronics-technologies-china-video-production
+          - link "Sports & Events" [ref=e244] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/sports-events-china-video-production
+          - link "Automobiles" [ref=e245] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/automobiles-china-video-production
+          - link "Real Estate" [ref=e246] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/real-estate-china-video-production
+          - link "Luxury" [ref=e247] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/luxury-industry-china-video-production
+          - link "Manufacturing" [ref=e248] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/manufacturing-industry-china-video-production
+          - link "HR, L&D" [ref=e249] [cursor=pointer]:
+            - /url: https://alchemist-films.com/commercial/hr-learning-development-china-video-production
+          - link "Social & Streaming" [ref=e250] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/social-media-china-video-production
+    - generic [ref=e252]:
+      - generic [ref=e253]:
+        - heading "Locations" [level=2] [ref=e254]
+        - generic [ref=e255]:
+          - link "Shanghai" [ref=e256] [cursor=pointer]:
+            - /url: https://alchemist-films.com/shanghai-video-production-fixer
+          - link "Beijing" [ref=e257] [cursor=pointer]:
+            - /url: https://alchemist-films.com/beijing-video-production-fixer
+          - link "Hangzhou" [ref=e258] [cursor=pointer]:
+            - /url: https://alchemist-films.com/hangzhou-video-production-fixer
+          - link "Shenzhen" [ref=e259] [cursor=pointer]:
+            - /url: https://alchemist-films.com/shenzhen-video-production-fixer
+          - link "Guangzhou" [ref=e260] [cursor=pointer]:
+            - /url: https://alchemist-films.com/guangzhou-video-production-fixer
+          - link "Chengdu" [ref=e261] [cursor=pointer]:
+            - /url: https://alchemist-films.com/chengdu-video-production-fixer
+          - link "Chongqing" [ref=e262] [cursor=pointer]:
+            - /url: https://alchemist-films.com/chongqing-video-production-fixer
+      - generic [ref=e263]:
+        - heading "Services" [level=2] [ref=e264]
+        - generic [ref=e265]:
+          - link "Concept" [ref=e266] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/concept-development-video-china
+          - link "Visual Styling" [ref=e267] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/creative-direction-visual-video-china
+          - link "Location Scouting" [ref=e268] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/location-scouting-permits-china-video
+          - link "Casting" [ref=e269] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/actor-model-casting-china
+          - link "Equipment Rental" [ref=e270] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/film-video-equipment-rental-china
+          - link "Permits" [ref=e271] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/visa-permits-custom-china
+          - link "Coordination" [ref=e272] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/video-production-coordination-china
+          - link "Post-production" [ref=e273] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/post-production-service-china
+          - link "Live Event" [ref=e274] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/event-video-photography-china
+          - link "Aerial Videography" [ref=e275] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/aerial-drone-fpv-china
+          - link "Localization" [ref=e276] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/voiceover-transcription-translation-china
+          - link "360° Video & VR" [ref=e277] [cursor=pointer]:
+            - /url: https://alchemist-films.com/services/360-video-vr-china

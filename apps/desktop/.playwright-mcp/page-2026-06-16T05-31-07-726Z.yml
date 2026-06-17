@@ -1,0 +1,578 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "Skip to content" [ref=e3] [cursor=pointer]:
+      - /url: "#page-content"
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "Google Logo" [ref=e9] [cursor=pointer]:
+          - /url: https://business.google.com/aunz/
+          - img "Google Logo" [ref=e11]
+        - navigation "Global navigation" [ref=e13]:
+          - menubar [ref=e14]:
+            - menuitem "Where to start?" [ref=e15] [cursor=pointer]
+            - menuitem "Solutions" [ref=e16] [cursor=pointer]
+            - menuitem "Learning & insights" [ref=e17] [cursor=pointer]
+            - menuitem "Get support" [ref=e18] [cursor=pointer]
+        - button "Sign in" [ref=e23] [cursor=pointer]:
+          - generic [ref=e24]: person
+      - generic [ref=e27]:
+        - link "Google Ads" [ref=e28] [cursor=pointer]:
+          - /url: https://business.google.com/aunz/google-ads/
+          - generic [ref=e29]: Google Ads
+        - navigation "Google Ads navigation" [ref=e31]:
+          - list [ref=e32]:
+            - listitem [ref=e33]:
+              - link "Goals" [ref=e34] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/google-ads/campaign-goals/
+            - listitem [ref=e35]:
+              - link "How it works" [ref=e36] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/google-ads/how-ads-work/
+            - listitem [ref=e37]:
+              - link "Cost" [ref=e38] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/google-ads/campaign-budget/
+            - listitem [ref=e39]:
+              - link "Articles & case studies" [ref=e40] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/resources/
+            - listitem [ref=e41]:
+              - link "Expert support" [ref=e42] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/support/ads-expert/
+        - generic [ref=e43]:
+          - link "‎1800 418 664" [ref=e45] [cursor=pointer]:
+            - /url: tel:1800418664
+            - img [ref=e46]
+            - generic [ref=e48]: ‎1800 418 664
+          - link "Sign in" [ref=e49] [cursor=pointer]:
+            - /url: https://ads.google.com/nav/login?subid=au-en-awhp-g-aw-c-home-signin-bgc!o2-s500g500|ib%3A6653296821|ib%3A9279461727|ib%3A7966379274|-ahpm-0000000179-0000000001&authuser=0
+          - link "Start now" [ref=e50] [cursor=pointer]:
+            - /url: https://ads.google.com/signup?subid=au-en-awhp-g-aw-c-home-top-bgc!o2-s500g500|ib%3A6653296821|ib%3A9279461727|ib%3A7966379274|-ahpm-0000000179-0000000001&authuser=0
+  - main [ref=e51]:
+    - generic [ref=e52]:
+      - button "Choose your offer now" [ref=e54] [cursor=pointer]:
+        - generic [ref=e55]:
+          - generic [ref=e59]: New to Google Ads? Choose an offer to earn up to $1800 in ad credit and jumpstart your first campaign.
+          - generic [ref=e60]:
+            - generic [ref=e61]: Choose now
+            - generic [ref=e62]:
+              - img
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - heading "Do more for your business with Google Ads" [level=1] [ref=e65]
+          - generic [ref=e66]:
+            - generic [ref=e67]:
+              - heading [level=2] [ref=e68]: Drive sales
+              - heading [level=2] [ref=e69]: Stand out
+              - heading [level=2] [ref=e70]: Be found
+              - heading [level=2] [ref=e71]: Show up
+            - generic [ref=e73]:
+              - paragraph [ref=e74]: with Google Ads
+              - button "Pause animation" [ref=e76] [cursor=pointer]
+          - img "Do more for your business with" [ref=e79]:
+            - generic [ref=e80]:
+              - generic:
+                - img:
+                  - generic:
+                    - generic: Shopping
+                    - generic: Footwear Sale
+                    - generic: Explore collections
+                    - generic: example-business.com
+            - generic [ref=e81]:
+              - generic:
+                - img:
+                  - generic:
+                    - generic: Video
+                    - generic: Safesure Bank
+                    - generic: example-business.com
+            - generic [ref=e82]:
+              - generic:
+                - img:
+                  - generic:
+                    - generic: Search
+                    - generic: Ad
+                    - generic: example-business.com
+                    - generic: Modern Design & Co
+            - generic [ref=e83]:
+              - generic:
+                - img:
+                  - generic:
+                    - generic: Display
+                    - generic: Custom Modern Couches
+                    - generic: The best modern furniture
+        - generic [ref=e84]:
+          - generic [ref=e85]: Whatever your business goal, drive better results with Performance Max.
+          - generic [ref=e87]:
+            - link "Do more for your business with Google Ads" [ref=e88] [cursor=pointer]:
+              - /url: https://ads.google.com/signup?subid=au-en-awhp-g-aw-c-home-hero-bgc!o2-s500g500|ib%3A6653296821|ib%3A9279461727|ib%3A7966379274|-ahpm-0000000179-0000000001&authuser=0
+              - text: Start now
+            - button "Chat with Google Ads" [ref=e89] [cursor=pointer]:
+              - img [ref=e90]
+              - text: Chat with Google Ads
+      - generic [ref=e93]:
+        - heading "Need help with your first steps? Chat with" [level=2] [ref=e96]: Need help with your first steps? Chat with Google Ads
+        - paragraph [ref=e97]: Connect with our AI-powered chat and learn how Google Ads can help your business. Try asking a question or selecting a conversation starter below.
+        - generic [ref=e98]:
+          - button "How do Google Ads work?" [ref=e99] [cursor=pointer]:
+            - img [ref=e100]
+            - text: How do Google Ads work?
+          - button "How can Google Ads help my business?" [ref=e102] [cursor=pointer]:
+            - img [ref=e103]
+            - text: How can Google Ads help my business?
+          - button "Ask something else" [ref=e105] [cursor=pointer]:
+            - img [ref=e106]
+            - text: Ask something else
+      - generic [ref=e109]:
+        - heading "Google Ads gives you many ways to be seen with Performance Max" [level=2] [ref=e112]
+        - generic [ref=e116]:
+          - tablist [ref=e118]:
+            - tab "Performance Max" [selected] [ref=e119] [cursor=pointer]:
+              - img [ref=e120]
+              - generic [ref=e122]: Performance Max
+              - img
+            - tab "Search" [ref=e123] [cursor=pointer]:
+              - img [ref=e124]
+              - generic [ref=e126]: Search
+              - img
+            - tab "Display" [ref=e127] [cursor=pointer]:
+              - img [ref=e128]
+              - generic [ref=e130]: Display
+              - img
+            - tab "Shopping" [ref=e131] [cursor=pointer]:
+              - img [ref=e132]
+              - generic [ref=e134]: Shopping
+              - img
+            - tab "Video" [ref=e135] [cursor=pointer]:
+              - img [ref=e136]
+              - generic [ref=e138]: Video
+              - img
+            - tab "App" [ref=e139] [cursor=pointer]:
+              - img [ref=e140]
+              - generic [ref=e142]: App
+              - img
+          - tabpanel "Performance Max" [ref=e144]:
+            - generic [ref=e146]:
+              - img "An earphone video ad surrounded by various Google product icons to represent the reach of Performance Max." [ref=e149]
+              - generic [ref=e150]:
+                - heading "Make the most of Google Ads" [level=3] [ref=e151]
+                - paragraph [ref=e152]: With Performance Max, you get the best of Google all-in-one. Powered by Google’s AI, reach valuable customers most likely to buy from you wherever they’re browsing - on Search, Display, YouTube and more - from a single campaign.
+                - link "Explore Performance Max" [ref=e155] [cursor=pointer]:
+                  - /url: https://business.google.com/aunz/ad-solutions/performance-max/
+                  - img [ref=e157]
+                  - text: Explore Performance Max
+      - generic [ref=e165]:
+        - generic [ref=e166]:
+          - heading "Choose a sign-up offer to jumpstart your first campaign" [level=2] [ref=e168]
+          - generic [ref=e169]:
+            - text: Select an offer that fits your monthly budget and sign up when ready. New advertisers will receive an ad credit after meeting the minimum spend requirement for the selected offer.
+            - link "Terms and conditions apply" [ref=e170] [cursor=pointer]:
+              - /url: https://ads.google.com/intl/en_au/home/terms-and-conditions/incentives/?bc=AU&bid=s500g500%7Cib%3A6653296821%7Cib%3A9279461727%7Cib%3A7966379274%7C%2Cs1500g1000%7Cib%3A9279461727%7Cib%3A6653296821%7Cib%3A7966379274%7C%2Cs3000g1500%7Cib%3A7966379274%7Cib%3A6653296821%7Cib%3A9279461727%7C
+            - text: .
+        - radiogroup [ref=e171]:
+          - radio "OFFER A $600 in ad credit Spend $600 with Google Ads in the first 60 days to unlock the credit." [ref=e173] [cursor=pointer]:
+            - generic [ref=e175]:
+              - img [ref=e177]
+              - generic [ref=e180]: OFFER A
+              - generic [ref=e181]:
+                - heading "$600" [level=3] [ref=e182]
+                - generic [ref=e183]: in ad credit
+              - paragraph [ref=e184]: Spend $600 with Google Ads in the first 60 days to unlock the credit.
+          - radio "OFFER B $1200 in ad credit Spend $1800 with Google Ads in the first 60 days to unlock the credit." [ref=e186] [cursor=pointer]:
+            - generic [ref=e188]:
+              - img [ref=e190]
+              - generic [ref=e193]: OFFER B
+              - generic [ref=e194]:
+                - heading "$1200" [level=3] [ref=e195]
+                - generic [ref=e196]: in ad credit
+              - paragraph [ref=e197]: Spend $1800 with Google Ads in the first 60 days to unlock the credit.
+          - radio "OFFER C $1800 in ad credit Spend $3600 with Google Ads in the first 60 days to unlock the credit." [ref=e199] [cursor=pointer]:
+            - generic [ref=e201]:
+              - img [ref=e203]
+              - generic [ref=e206]: OFFER C
+              - generic [ref=e207]:
+                - heading "$1800" [level=3] [ref=e208]
+                - generic [ref=e209]: in ad credit
+              - paragraph [ref=e210]: Spend $3600 with Google Ads in the first 60 days to unlock the credit.
+        - generic:
+          - generic:
+            - heading "Select an offer to continue" [level=4]
+          - link "Claim Now" [disabled]:
+            - /url: https://ads.google.com/signup?subid=au-en-awhp-g-aw-c-home-cyo-mid-bgc!o2-s500g500|ib%3A6653296821|ib%3A9279461727|ib%3A7966379274|-ahpm-0000000179-0000000001&authuser=0
+      - generic [ref=e213]:
+        - generic [ref=e217]:
+          - heading "Achieve all your goals in one place" [level=2] [ref=e219]
+          - link "Learn more" [ref=e221] [cursor=pointer]:
+            - /url: https://business.google.com/aunz/google-ads/campaign-goals/
+        - generic [ref=e226]:
+          - generic [ref=e231]:
+            - generic [ref=e232]: Maximise leads and conversions
+            - paragraph [ref=e235]: Get better quality leads and enhance conversions.
+          - generic [ref=e240]:
+            - generic [ref=e241]: Increase online sales
+            - paragraph [ref=e244]: Show up where shoppers are and increase site traffic and sales.
+          - generic [ref=e249]:
+            - generic [ref=e250]: Drive in-store foot traffic
+            - paragraph [ref=e253]: Bring people through your doors and increase offline sales.
+          - generic [ref=e258]:
+            - generic [ref=e259]: Show your brand to more people
+            - paragraph [ref=e262]: Put your brand out there to increase reach and engagement.
+          - generic [ref=e267]:
+            - generic [ref=e268]: Market your app to new users
+            - paragraph [ref=e271]: Put your app in front of the right users to drive downloads and engagement.
+      - generic [ref=e274]:
+        - heading "The power of Google, for your business" [level=2] [ref=e278]:
+          - generic [ref=e279]:
+            - text: The power of Google,
+            - text: for your business
+        - list [ref=e281]:
+          - listitem [ref=e282]:
+            - generic [ref=e286]:
+              - heading "Reach customers wherever they are" [level=3] [ref=e287]
+              - paragraph
+              - paragraph [ref=e288]: Show up at the right time and place across the vast Google Ads ecosystem. Let Google’s AI find your best performing ad formats across YouTube, Discover, Search, and more to maximise conversions.
+              - paragraph
+          - listitem [ref=e290]:
+            - generic [ref=e292]:
+              - generic:
+                - img:
+                  - generic:
+                    - generic: Conversions
+                    - generic: +100k
+            - generic [ref=e293]:
+              - heading "Track, learn, and optimise for ROI" [level=3] [ref=e294]
+              - paragraph
+              - paragraph [ref=e295]: Track conversions to get unmatched audience insights. Google’s budget-optimising automation helps you capture new customer opportunities with the highest ROI.
+              - paragraph
+          - listitem [ref=e297]:
+            - generic [ref=e299]:
+              - generic:
+                - img:
+                  - generic:
+                    - generic: Monthly budget cap
+                    - generic: $
+                    - generic: $$
+            - generic [ref=e300]:
+              - heading "Stay in full control of your budget" [level=3] [ref=e301]
+              - paragraph
+              - paragraph [ref=e302]: Get recommendations, decide your monthly budget, and adjust at any time. Google technology helps you measure results and make the most of your ad spend.
+              - paragraph
+      - generic [ref=e305]:
+        - generic [ref=e308]:
+          - heading "What success looks like" [level=2] [ref=e309]
+          - link "View all success stories" [ref=e311] [cursor=pointer]:
+            - /url: https://business.google.com/aunz/resources/?content-type=success-story
+        - region "Carousel list of case studies" [ref=e316]:
+          - generic [ref=e318]:
+            - generic "Case study number 1 / 5" [ref=e319]:
+              - generic [ref=e320]:
+                - img "Watch case studies" [ref=e324]
+                - generic [ref=e329]:
+                  - heading "See how Google Ads has helped different businesses across Australia grow." [level=3] [ref=e330]
+                  - link "Watch now" [ref=e333] [cursor=pointer]:
+                    - /url: https://youtu.be/ZDK_QMSDWqo
+                    - img [ref=e335]
+                    - text: Watch now
+            - generic [ref=e338]:
+              - generic [ref=e339]:
+                - img [ref=e342]
+                - group [ref=e343]:
+                  - generic [ref=e344]: 30:1
+                  - generic [ref=e345]: ROI with Google Ads
+              - generic [ref=e347]:
+                - img [ref=e350]
+                - generic [ref=e351]:
+                  - heading [level=3] [ref=e352]: “Google Ads drives 51% of Princess Polly’s revenue.”
+                  - paragraph [ref=e353]: Dane Walker, Global Marketing Director, Princess Polly
+                  - link [ref=e356] [cursor=pointer]:
+                    - /url: https://youtu.be/NjgDFchwCy8
+                    - img [ref=e358]
+                    - text: Watch their story
+            - generic [ref=e361]:
+              - generic [ref=e362]:
+                - img [ref=e365]
+                - group [ref=e366]:
+                  - generic [ref=e367]: 36:1
+                  - generic [ref=e368]: ROI with Google Ads
+              - generic [ref=e370]:
+                - img [ref=e373]
+                - generic [ref=e374]:
+                  - heading [level=3] [ref=e375]: “Our Return On Investment has been 36:1 - that blows my mind.”
+                  - paragraph [ref=e376]: Melissa Stone, Owner, Bliss Gifts & Homewares
+                  - link [ref=e379] [cursor=pointer]:
+                    - /url: https://youtu.be/IENapbrGt_g
+                    - img [ref=e381]
+                    - text: Watch their story
+            - generic [ref=e384]:
+              - generic [ref=e385]:
+                - img [ref=e388]
+                - group [ref=e389]:
+                  - generic [ref=e390]: 27%
+                  - generic [ref=e391]: conversion rate with Google Ads
+              - generic [ref=e393]:
+                - img [ref=e396]
+                - generic [ref=e397]:
+                  - heading [level=3] [ref=e398]: “Since we started using Google Ads, we’ve doubled the size of the store.”
+                  - paragraph [ref=e399]: Margaret Hennessy, CEO, DOGUE
+                  - link [ref=e402] [cursor=pointer]:
+                    - /url: https://youtu.be/LH8wmwqNeYU
+                    - img [ref=e404]
+                    - text: Watch their story
+            - generic [ref=e407]:
+              - generic [ref=e408]:
+                - img [ref=e411]
+                - group [ref=e412]:
+                  - generic [ref=e413]: 5:1
+                  - generic [ref=e414]: ROAS from Google Ads campaigns
+              - generic [ref=e416]:
+                - img [ref=e419]
+                - generic [ref=e420]:
+                  - heading [level=3] [ref=e421]: “For every $1 we spend on Google Ads, we get $5 back in revenue.”
+                  - paragraph [ref=e422]: Duncan Jones, Head of Marketing, Cluey Learning
+                  - link [ref=e425] [cursor=pointer]:
+                    - /url: https://youtu.be/4q-zB2QGwI8
+                    - img [ref=e427]
+                    - text: Watch their story
+          - generic [ref=e429]:
+            - generic [ref=e430]:
+              - paragraph [ref=e431]:
+                - generic [ref=e432]: Page number
+                - text: 1 / 5
+              - img
+            - button "Go to the next slide" [ref=e433] [cursor=pointer]:
+              - img
+      - generic [ref=e438]:
+        - generic [ref=e439]:
+          - heading "Let us help." [level=2] [ref=e440]
+          - generic [ref=e441]: Get started with our free personalised support. Create your custom ads plan with a Google Ads Expert.
+        - generic [ref=e442]:
+          - link "‎1800 418 664" [ref=e443] [cursor=pointer]:
+            - /url: tel:1800418664
+            - img [ref=e444]
+            - text: ‎1800 418 664
+          - button "Chat with us" [ref=e446] [cursor=pointer]:
+            - img [ref=e447]
+            - paragraph [ref=e449]: Chat with us
+      - generic [ref=e453]:
+        - heading "Frequently asked questions" [level=2] [ref=e455]
+        - generic [ref=e457]:
+          - button "Toggle all panels" [ref=e459] [cursor=pointer]:
+            - generic [ref=e460]: Expand all
+            - generic [ref=e461]: expand_all
+          - generic [ref=e462]:
+            - generic [ref=e463]:
+              - heading "What are the different types of Google Ads campaigns I can run?" [level=3] [ref=e464]:
+                - button "What are the different types of Google Ads campaigns I can run?" [ref=e465] [cursor=pointer]:
+                  - generic [ref=e467]: What are the different types of Google Ads campaigns I can run?
+                  - generic [ref=e469]: add
+              - generic [ref=e470]:
+                - text: "There are many types of Google Ads campaigns to choose from:"
+                - list [ref=e471]:
+                  - listitem [ref=e472]: Search ads
+                  - listitem [ref=e473]: Performance Max Campaigns
+                  - listitem [ref=e474]: Display ads
+                  - listitem [ref=e475]: Demand Gen campaigns
+                  - listitem [ref=e476]: Shopping ads
+                  - listitem [ref=e477]: Video ads
+                  - listitem [ref=e478]: App ads
+                - text: The campaign type that you select is based on your marketing goals, brand strategy, and how much time you can invest. Learn how to choose the right campaign to run by visiting the
+                - link [ref=e479] [cursor=pointer]:
+                  - /url: https://support.google.com/google-ads/answer/2567043?hl=en&ref_topic=10286612,3181080,3126923,&sjid=2416158513707060248-NA&visit_id=638567559239781313-1816988681&rd=1
+                  - text: Choose the right campaign help page
+                - text: .
+            - generic [ref=e480]:
+              - heading "Which type of Google Ads campaign is right for my business?" [level=3] [ref=e481]:
+                - button "Which type of Google Ads campaign is right for my business?" [ref=e482] [cursor=pointer]:
+                  - generic [ref=e484]: Which type of Google Ads campaign is right for my business?
+                  - generic [ref=e486]: add
+              - generic [ref=e487]:
+                - text: The best ad campaign for your business comes down to your goals. The campaign type that you select is based on your marketing goals, brand strategy, and how much time you can invest. Learn how to choose the right campaign type by visiting the
+                - link [ref=e488] [cursor=pointer]:
+                  - /url: https://support.google.com/google-ads/answer/2567043?hl=en&ref_topic=10286612,3181080,3126923,&sjid=2416158513707060248-NA&visit_id=638567559239781313-1816988681&rd=1
+                  - text: Choose the right campaign help page
+                - text: .
+            - generic [ref=e489]:
+              - heading "Does Google Ads use AI?" [level=3] [ref=e490]:
+                - button "Does Google Ads use AI?" [ref=e491] [cursor=pointer]:
+                  - generic [ref=e493]: Does Google Ads use AI?
+                  - generic [ref=e495]: add
+              - generic [ref=e496]:
+                - text: Yes, Google’s AI-powered ad solutions help take your marketing further by helping you find new customers, build creative, unlock performance opportunities, and multiply your business results. Learn the essentials and how to supercharge your marketing with AI by visiting the
+                - link [ref=e497] [cursor=pointer]:
+                  - /url: https://support.google.com/google-ads/answer/13580022?hl=en&sjid=2416158513707060248-NA
+                  - text: Google Ads AI Essentials help page
+                - text: .
+            - generic [ref=e498]:
+              - heading "How can I use Google Ads to reach potential customers?" [level=3] [ref=e499]:
+                - button "How can I use Google Ads to reach potential customers?" [ref=e500] [cursor=pointer]:
+                  - generic [ref=e502]: How can I use Google Ads to reach potential customers?
+                  - generic [ref=e504]: add
+              - generic [ref=e505]:
+                - text: Google Ads can help you find potential customers interested in products or brands like yours. Google Ads Audiences helps you reach people based on their passions or topics they’re actively researching. By building custom audiences based on relevant keywords and websites, you can deliver more relevant ads to better achieve your goals. Learn how to reach more potential customers by visiting the
+                - link [ref=e506] [cursor=pointer]:
+                  - /url: https://support.google.com/google-ads/answer/10075331?hl=en&sjid=2416158513707060248-NA
+                  - text: Reach more of your ideal customers with custom audiences help page
+                - text: .
+  - contentinfo [ref=e507]:
+    - heading "Footer links" [level=2] [ref=e508]
+    - generic [ref=e512]:
+      - paragraph [ref=e513]: Follow us
+      - list [ref=e514]:
+        - listitem [ref=e515]:
+          - link "Follow Google Ads on Blogger" [ref=e516] [cursor=pointer]:
+            - /url: https://blog.google/products/ads/
+            - img
+        - listitem [ref=e517]:
+          - link "Follow Google Ads on X" [ref=e518] [cursor=pointer]:
+            - /url: https://x.com/googleads
+            - img
+        - listitem [ref=e519]:
+          - link "Follow Google Ads on YouTube" [ref=e520] [cursor=pointer]:
+            - /url: https://www.youtube.com/googleads
+            - img
+        - listitem [ref=e521]:
+          - link "Follow Google Ads on Facebook" [ref=e522] [cursor=pointer]:
+            - /url: https://www.facebook.com/GoogleAds/
+            - img
+    - navigation "Footer links" [ref=e523]:
+      - generic [ref=e524]:
+        - generic [ref=e525]:
+          - heading "Products" [level=3] [ref=e526]:
+            - generic [ref=e527]: Products
+          - list "Products" [ref=e529]:
+            - listitem [ref=e530]:
+              - link "Google Ads" [ref=e531] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/google-ads/
+            - listitem [ref=e532]:
+              - link "YouTube Ads" [ref=e533] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/ad-solutions/youtube-ads/
+            - listitem [ref=e534]:
+              - link "Merchant Center" [ref=e535] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/merchant-center/
+            - listitem [ref=e536]:
+              - link "Business Profile" [ref=e537] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/business-profile/
+            - listitem [ref=e538]:
+              - link "Google Analytics" [ref=e539] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/google-analytics/
+            - listitem [ref=e540]:
+              - link "Manufacturer Center" [ref=e541] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/merchant-center/manufacturer-center/
+        - generic [ref=e542]:
+          - heading "Learning and support" [level=3] [ref=e543]:
+            - generic [ref=e544]: Learning and support
+          - list "Learning and support" [ref=e546]:
+            - listitem [ref=e547]:
+              - link "Accelerate with Google" [ref=e548] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/accelerate/
+            - listitem [ref=e549]:
+              - link "Think with Google" [ref=e550] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/think/
+            - listitem [ref=e551]:
+              - link "Google Ads Help Center" [ref=e552] [cursor=pointer]:
+                - /url: https://support.google.com/google-ads/#topic=10286612&utm_source=smb_marketing&utm_medium=referral&utm_campaign=au-en-et-awhp-footer&utm_content=
+            - listitem [ref=e553]:
+              - link "Your guide to Merchant Center" [ref=e554] [cursor=pointer]:
+                - /url: https://support.google.com/merchants/answer/12159157
+            - listitem [ref=e555]:
+              - link "Your guide to Google Ads" [ref=e556] [cursor=pointer]:
+                - /url: https://support.google.com/google-ads/answer/6146252?utm_medium=et&utm_campaign=en&utm_source=ww-ww-et-b2bfooter_adwords
+            - listitem [ref=e557]:
+              - link "Google Advertiser Community" [ref=e558] [cursor=pointer]:
+                - /url: https://support.google.com/google-ads/community?ctx=lithium
+        - generic [ref=e559]:
+          - heading "Partners and developers" [level=3] [ref=e560]:
+            - generic [ref=e561]: Partners and developers
+          - list "Partners and developers" [ref=e563]:
+            - listitem [ref=e564]:
+              - link "Google Partners" [ref=e565] [cursor=pointer]:
+                - /url: https://partnersdirectory.withgoogle.com/?premier=true
+            - listitem [ref=e566]:
+              - link "Google Developers site" [ref=e567] [cursor=pointer]:
+                - /url: https://developers.google.com/
+            - listitem [ref=e568]:
+              - link "Google Ads Scripts" [ref=e569] [cursor=pointer]:
+                - /url: https://developers.google.com/google-ads/scripts/docs/start
+            - listitem [ref=e570]:
+              - link "Google Ads Remarketing Tags" [ref=e571] [cursor=pointer]:
+                - /url: https://support.google.com/google-ads/answer/2476688
+            - listitem [ref=e572]:
+              - link "Google Ads API" [ref=e573] [cursor=pointer]:
+                - /url: https://business.google.com/aunz/ad-tools/google-ads-api/
+        - generic [ref=e574]:
+          - heading "More solutions" [level=3] [ref=e575]:
+            - generic [ref=e576]: More solutions
+          - list "More solutions" [ref=e578]:
+            - listitem [ref=e579]:
+              - link "Workspace" [ref=e580] [cursor=pointer]:
+                - /url: https://workspace.google.com/
+            - listitem [ref=e581]:
+              - link "Chrome" [ref=e582] [cursor=pointer]:
+                - /url: https://www.google.com/chrome/
+            - listitem [ref=e583]:
+              - link "Google Cloud" [ref=e584] [cursor=pointer]:
+                - /url: https://cloud.google.com/
+            - listitem [ref=e585]:
+              - link "AdSense" [ref=e586] [cursor=pointer]:
+                - /url: https://adsense.google.com/start/
+            - listitem [ref=e587]:
+              - link "AdMob" [ref=e588] [cursor=pointer]:
+                - /url: https://admob.google.com/home/get-started/
+    - paragraph [ref=e590]: Actual results will vary by advertiser.
+    - generic [ref=e591]:
+      - link "Google" [ref=e593] [cursor=pointer]:
+        - /url: https://www.google.com
+        - img [ref=e594]
+      - list [ref=e596]:
+        - listitem [ref=e597]:
+          - link "About Google" [ref=e598] [cursor=pointer]:
+            - /url: https://www.google.com/intl/en/about
+        - listitem [ref=e599]:
+          - link "Google products" [ref=e600] [cursor=pointer]:
+            - /url: https://www.google.com/intl/en/about/products
+        - listitem [ref=e601]:
+          - link "Privacy" [ref=e602] [cursor=pointer]:
+            - /url: https://policies.google.com/privacy?authuser=0
+        - listitem [ref=e603]:
+          - link "Terms" [ref=e604] [cursor=pointer]:
+            - /url: https://policies.google.com/terms
+      - list [ref=e605]:
+        - listitem [ref=e606]:
+          - link "Help" [ref=e607] [cursor=pointer]:
+            - /url: https://support.google.com/google-ads/
+            - img [ref=e608]
+            - text: Help
+        - listitem [ref=e610]:
+          - combobox "Change language or region" [ref=e611]:
+            - option "Australia and New Zealand - English" [selected]
+            - option "Brasil - Português (Brasil)"
+            - option "Canada - English"
+            - option "Canada - Français"
+            - option "Česká Republika - Čeština"
+            - option "Deutschland - Deutsch"
+            - option "English (Global)"
+            - option "España - Español"
+            - option "Español (Latinoamérica)"
+            - option "France - Français"
+            - option "India - English"
+            - option "Indonesia - Bahasa Indonesia"
+            - option "Italia - Italiano"
+            - option "Nederland - Nederlands"
+            - option "Polska - Polski"
+            - option "Русский"
+            - option "România - Română"
+            - option "Sverige - Svenska"
+            - option "Türkiye - Türkçe"
+            - option "United Kingdom - English"
+            - option "United States - English"
+            - option "Việt Nam - Tiếng Việt"
+            - option "ישראל - עברית"
+            - option "العربية"
+            - option "简体中文"
+            - option "繁體中文"
+            - option "日本 - 日本語"
+            - option "대한민국 - 한국어"
+            - option "ไทย - ไทย"
+            - option "Україна - Українська"
+  - generic:
+    - generic:
+      - generic:
+        - button "Chat with Google's AI assistant about Google Ads!" [ref=e614] [cursor=pointer]:
+          - img [ref=e615]
+        - button "I’m powered by Google AI. Together, we can use Google Ads to grow your business." [ref=e620] [cursor=pointer]

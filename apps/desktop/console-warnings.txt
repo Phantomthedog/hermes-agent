@@ -1,0 +1,4 @@
+Total messages: 1 (Errors: 1, Warnings: 0)
+
+TypeError: Cannot read properties of null (reading 'addEventListener')
+    at https://alchemist-films.com/wp-content/themes/aflims-x-lordeys/js/app.js:40:11

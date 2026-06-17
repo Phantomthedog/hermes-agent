@@ -1,0 +1,3 @@
+[    1145ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://alchemist-films.com/lp/china-production/:0
+[    7937ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at https://alchemist-films.com/wp-content/themes/aflims-x-lordeys/js/app.js:40:11
