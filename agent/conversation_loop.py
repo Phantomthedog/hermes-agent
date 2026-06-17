@@ -278,6 +278,27 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
     (which constructs a fresh ``AIAgent`` per turn and depends on this
     DB roundtrip).
     """
+
+def _set_live_state(
+    agent,
+    state: str,
+    tool_name: str = None,
+    detail: str = None,
+) -> None:
+    """Set live execution state in the session DB.
+
+    Best-effort: failures are logged at DEBUG and never raised.
+    Safe to call before _session_db is initialized or without a session_id.
+    """
+    if not agent or not getattr(agent, "_session_db", None) or not getattr(agent, "session_id", None):
+        return
+    try:
+        agent._session_db.set_session_live_state(
+            agent.session_id, state, tool_name, detail,
+        )
+    except Exception:
+        logger.debug("_set_live_state(%s, %s) failed", getattr(agent, "session_id", "?"), state)
+
     stored_prompt = None
     stored_state = "missing"
     if conversation_history and agent._session_db:
@@ -533,6 +554,9 @@ def run_conversation(
     _should_review_memory = _ctx.should_review_memory
     _plugin_user_context = _ctx.plugin_user_context
     _ext_prefetch_cache = _ctx.ext_prefetch_cache
+
+    # Live state: user has just spoken → listening
+    _set_live_state(agent, "listening")
 
     # Main conversation loop counters (pure locals consumed by the loop below).
     api_call_count = 0
@@ -1109,9 +1133,13 @@ def run_conversation(
 
                 def _perform_api_call(next_api_kwargs):
                     if _use_streaming:
+                        # Live state: model is being called → thinking
+                        _set_live_state(agent, "thinking")
                         return agent._interruptible_streaming_api_call(
                             next_api_kwargs, on_first_delta=_stop_spinner
                         )
+                    # Live state: model is being called → thinking
+                    _set_live_state(agent, "thinking")
                     return agent._interruptible_api_call(next_api_kwargs)
 
                 from hermes_cli.middleware import run_llm_execution_middleware
@@ -3943,6 +3971,17 @@ def run_conversation(
 
                 agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
 
+                # Live state: tool execution starting → tool_running
+                _first_tool_name = None
+                _tool_calls_list = getattr(assistant_message, "tool_calls", None)
+                if _tool_calls_list and len(_tool_calls_list) > 0:
+                    _first = _tool_calls_list[0]
+                    if isinstance(_first, dict):
+                        _first_tool_name = _first.get("function", {}).get("name")
+                    elif hasattr(_first, "function"):
+                        _first_tool_name = _first.function.name
+                _set_live_state(agent, "tool_running", tool_name=_first_tool_name)
+
                 if agent._tool_guardrail_halt_decision is not None:
                     decision = agent._tool_guardrail_halt_decision
                     _turn_exit_reason = "guardrail_halt"
@@ -4378,6 +4417,8 @@ def run_conversation(
             
         except Exception as e:
             error_msg = f"Error during OpenAI-compatible API call #{api_call_count}: {str(e)}"
+            # Live state: turn failed → error
+            _set_live_state(agent, "error", detail=error_msg[:200])
             try:
                 print(f"❌ {error_msg}")
             except (OSError, ValueError):
@@ -4539,6 +4580,9 @@ def run_conversation(
                 )
         except Exception:
             pass
+
+    # Live state: turn completed → done
+    _set_live_state(agent, "done")
 
     return result
 
