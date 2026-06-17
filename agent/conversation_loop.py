@@ -278,27 +278,6 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
     (which constructs a fresh ``AIAgent`` per turn and depends on this
     DB roundtrip).
     """
-
-def _set_live_state(
-    agent,
-    state: str,
-    tool_name: str = None,
-    detail: str = None,
-) -> None:
-    """Set live execution state in the session DB.
-
-    Best-effort: failures are logged at DEBUG and never raised.
-    Safe to call before _session_db is initialized or without a session_id.
-    """
-    if not agent or not getattr(agent, "_session_db", None) or not getattr(agent, "session_id", None):
-        return
-    try:
-        agent._session_db.set_session_live_state(
-            agent.session_id, state, tool_name, detail,
-        )
-    except Exception:
-        logger.debug("_set_live_state(%s, %s) failed", getattr(agent, "session_id", "?"), state)
-
     stored_prompt = None
     stored_state = "missing"
     if conversation_history and agent._session_db:
@@ -394,6 +373,28 @@ def _set_live_state(
                 "miss the prefix cache.",
                 agent.session_id, exc,
             )
+
+
+def _set_live_state(
+    agent,
+    state: str,
+    tool_name: str = None,
+    detail: str = None,
+) -> None:
+    """Set live execution state in the session DB.
+
+    Best-effort: failures are logged at DEBUG and never raised.
+    Safe to call before _session_db is initialized or without a session_id.
+    """
+    if not agent or not getattr(agent, "_session_db", None) or not getattr(agent, "session_id", None):
+        return
+    try:
+        agent._session_db.set_session_live_state(
+            agent.session_id, state, tool_name, detail,
+        )
+    except Exception:
+        logger.debug("_set_live_state(%s, %s) failed", getattr(agent, "session_id", "?"), state)
+
 
 
 def _stored_prompt_matches_runtime(agent, prompt: str) -> bool:
