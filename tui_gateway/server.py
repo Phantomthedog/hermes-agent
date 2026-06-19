@@ -10015,7 +10015,7 @@ def _(rid, params: dict) -> dict:
             current_base_url=getattr(agent, "base_url", "") if agent else "",
         )
         payload = build_models_payload(
-            ctx, picker_hints=True, max_models=250,
+            ctx, picker_hints=True,
         )
         provider_data = next(
             (p for p in payload["providers"] if p["slug"] == slug), None
