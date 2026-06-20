@@ -915,14 +915,77 @@ export function usePromptActions({
           return
         }
 
+        const handleDispatch = async (dispatch: NonNullable<ReturnType<typeof parseCommandDispatch>>): Promise<void> => {
+          if (dispatch.type === 'exec' || dispatch.type === 'plugin') {
+            renderSlashOutput(dispatch.output ?? '(no output)')
+
+            return
+          }
+
+          if (dispatch.type === 'alias') {
+            await runSlash(`/${dispatch.target}${arg ? ` ${arg}` : ''}`, sessionId, false)
+
+            return
+          }
+
+          // send / prefill carry an optional `notice` (e.g. "⊙ Goal set …")
+          // that the backend wants shown as a system line before the message
+          // is acted on. Mirrors the TUI's createSlashHandler — without it a
+          // `/goal <text>` looked like it did nothing.
+          if ((dispatch.type === 'send' || dispatch.type === 'prefill') && dispatch.notice?.trim()) {
+            renderSlashOutput(dispatch.notice.trim())
+          }
+
+          const message = ('message' in dispatch ? dispatch.message : '')?.trim() ?? ''
+
+          // /undo returns a prefill directive: drop the backed-up message into
+          // the composer for editing instead of submitting it immediately.
+          if (dispatch.type === 'prefill') {
+            if (message) {
+              setComposerDraft(message)
+            }
+
+            return
+          }
+
+          if (!message) {
+            renderSlashOutput(
+              `/${name}: ${dispatch.type === 'skill' ? 'skill payload missing message' : 'empty message'}`
+            )
+
+            return
+          }
+
+          if (dispatch.type === 'skill') {
+            renderSlashOutput(`⚡ loading skill: ${dispatch.name}`)
+          }
+
+          if (busyRef.current) {
+            renderSlashOutput('session busy — /interrupt the current turn before sending this command')
+
+            return
+          }
+
+          await submitPromptText(message)
+        }
+
         try {
-          const result = await requestGateway<SlashExecResponse>('slash.exec', {
+          const result = await requestGateway<unknown>('slash.exec', {
             session_id: sessionId,
             command: command.replace(/^\/+/, '')
           })
 
-          const body = result?.output || `/${name}: no output`
-          renderSlashOutput(result?.warning ? `warning: ${result.warning}\n${body}` : body)
+          const dispatch = parseCommandDispatch(result)
+
+          if (dispatch) {
+            await handleDispatch(dispatch)
+
+            return
+          }
+
+          const output = result && typeof result === 'object' ? (result as SlashExecResponse) : null
+          const body = output?.output || `/${name}: no output`
+          renderSlashOutput(output?.warning ? `warning: ${output.warning}\n${body}` : body)
 
           return
         } catch {
@@ -940,67 +1003,7 @@ export function usePromptActions({
             return
           }
 
-          if (dispatch.type === 'exec' || dispatch.type === 'plugin') {
-            renderSlashOutput(dispatch.output ?? '(no output)')
-
-            return
-          }
-
-          if (dispatch.type === 'alias') {
-            await runSlash(`/${dispatch.target}${arg ? ` ${arg}` : ''}`, sessionId, false)
-
-            return
-          }
-
-          if (dispatch.type === 'skill') {
-            renderSlashOutput(`⚡ loading skill: ${dispatch.name}`)
-
-            const message = (dispatch.message ?? '').trim()
-
-            if (!message) {
-              renderSlashOutput(`/${name}: skill payload missing message`)
-
-              return
-            }
-
-            if (busyRef.current) {
-              renderSlashOutput('session busy — /interrupt the current turn before sending this command')
-
-              return
-            }
-
-            await submitPromptText(message)
-
-            return
-          }
-
-          if (dispatch.type === 'send') {
-            if (dispatch.notice?.trim()) {
-              renderSlashOutput(dispatch.notice)
-            }
-
-            if (busyRef.current) {
-              renderSlashOutput('session busy — /interrupt the current turn before sending this command')
-
-              return
-            }
-
-            await submitPromptText(dispatch.message)
-
-            return
-          }
-
-          if (dispatch.type === 'prefill') {
-            if (dispatch.notice?.trim()) {
-              renderSlashOutput(dispatch.notice)
-            }
-
-            setComposerDraft(dispatch.message)
-
-            return
-          }
-
-          renderSlashOutput(`error: unknown dispatch type`)
+          await handleDispatch(dispatch)
         } catch (err) {
           renderSlashOutput(`error: ${err instanceof Error ? err.message : String(err)}`)
         }
