@@ -363,6 +363,39 @@ class ChatCompletionsTransport(ProviderTransport):
                         _tokenhub_effort = _e
                 api_kwargs["reasoning_effort"] = _tokenhub_effort
 
+        # Sub2API gateway: top-level reasoning_effort.
+        #
+        # Verified live 2026-06-20 against /v1/chat/completions:
+        # - reasoning_effort="xhigh" is accepted and produces reasoning_tokens
+        # - reasoning_effort="high" produced no reasoning_tokens in the probe
+        # - top-level reasoning={...} is ignored
+        # - extra_body.reasoning is ignored
+        #
+        # Preserve xhigh here instead of clamping it away.
+        provider_name = str(params.get("provider_name") or "").strip().lower()
+        if provider_name == "sub2api":
+            _sub2_cfg = reasoning_config
+            if _sub2_cfg is None:
+                try:
+                    from hermes_constants import parse_reasoning_effort
+                    from hermes_cli.config import load_config
+                    _raw_effort = ((load_config().get("agent") or {}).get("reasoning_effort") or "")
+                    _sub2_cfg = parse_reasoning_effort(str(_raw_effort))
+                except Exception:
+                    _sub2_cfg = None
+            _sub2_thinking_off = bool(
+                _sub2_cfg
+                and isinstance(_sub2_cfg, dict)
+                and _sub2_cfg.get("enabled") is False
+            )
+            if not _sub2_thinking_off:
+                _sub2_effort = "medium"
+                if _sub2_cfg and isinstance(_sub2_cfg, dict):
+                    _e = (_sub2_cfg.get("effort") or "").strip().lower()
+                    if _e in {"minimal", "low", "medium", "high", "xhigh"}:
+                        _sub2_effort = _e
+                api_kwargs["reasoning_effort"] = _sub2_effort
+
         # LM Studio: top-level reasoning_effort. Only emit when the model
         # declares reasoning support via /api/v1/models capabilities (gated
         # upstream by params["supports_reasoning"]). resolve_lmstudio_effort
@@ -537,6 +570,45 @@ class ChatCompletionsTransport(ProviderTransport):
             )
         )
         api_kwargs.update(top_level_from_profile)
+
+        # Sub2API gateway: top-level reasoning_effort.
+        #
+        # Verified live 2026-06-20 against /v1/chat/completions:
+        # - reasoning_effort="xhigh" is accepted and produces reasoning_tokens
+        # - reasoning_effort="high" produced no reasoning_tokens in the probe
+        # - top-level reasoning={...} is ignored
+        # - extra_body.reasoning is ignored
+        #
+        # Named custom providers use the ProviderProfile path, so apply the
+        # Sub2API rule here as well. Detect by profile name or endpoint host.
+        _profile_name = str(getattr(profile, "name", "") or "").strip().lower()
+        _base_url = str(params.get("base_url") or "")
+        _is_sub2api = (
+            _profile_name == "sub2api"
+            or "107.172.147.209:8080" in _base_url
+        )
+        if _is_sub2api:
+            _sub2_cfg = reasoning_config
+            if _sub2_cfg is None:
+                try:
+                    from hermes_constants import parse_reasoning_effort
+                    from hermes_cli.config import load_config
+                    _raw_effort = ((load_config().get("agent") or {}).get("reasoning_effort") or "")
+                    _sub2_cfg = parse_reasoning_effort(str(_raw_effort))
+                except Exception:
+                    _sub2_cfg = None
+            _sub2_thinking_off = bool(
+                _sub2_cfg
+                and isinstance(_sub2_cfg, dict)
+                and _sub2_cfg.get("enabled") is False
+            )
+            if not _sub2_thinking_off:
+                _sub2_effort = "medium"
+                if _sub2_cfg and isinstance(_sub2_cfg, dict):
+                    _e = (_sub2_cfg.get("effort") or "").strip().lower()
+                    if _e in {"minimal", "low", "medium", "high", "xhigh"}:
+                        _sub2_effort = _e
+                api_kwargs["reasoning_effort"] = _sub2_effort
 
         # extra_body assembly
         extra_body: dict[str, Any] = {}
