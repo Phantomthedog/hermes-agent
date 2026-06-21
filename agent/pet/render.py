@@ -41,6 +41,19 @@ logger = logging.getLogger(__name__)
 RENDER_MODES = ("auto", "kitty", "iterm", "sixel", "unicode", "off")
 
 
+def render_mode_is_off(configured: str | bool | None) -> bool:
+    """Return True when ``display.pet.render_mode`` disables terminal pets.
+
+    ``hermes config set display.pet.render_mode off`` is parsed by the legacy
+    config CLI as boolean ``False`` (YAML's bool-ish ``off`` token). Treat that
+    as the terminal-only ``off`` mode so users can hide CLI/TUI pets without
+    turning off the desktop pet.
+    """
+    if isinstance(configured, bool):
+        return configured is False
+    return str(configured or "").strip().lower() in {"off", "false", "no", "0"}
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Terminal capability detection
 # ─────────────────────────────────────────────────────────────────────────
@@ -90,18 +103,19 @@ def detect_terminal_graphics() -> str:
     return "unicode"
 
 
-def resolve_mode(configured: str | None, *, stream=None) -> str:
+def resolve_mode(configured: str | bool | None, *, stream=None) -> str:
     """Resolve the effective render mode from config + the environment.
 
     ``configured`` is ``display.pet.render_mode`` (``auto`` → detect).  Returns
     ``off`` when not attached to a TTY (no point emitting graphics into a pipe
     or logfile).
     """
-    mode = (configured or "auto").strip().lower()
+    if render_mode_is_off(configured):
+        return "off"
+
+    mode = str(configured or "auto").strip().lower()
     if mode not in RENDER_MODES:
         mode = "auto"
-    if mode == "off":
-        return "off"
 
     stream = stream or sys.stdout
     try:

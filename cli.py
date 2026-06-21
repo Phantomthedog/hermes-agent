@@ -4355,7 +4355,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
         """
         try:
             from agent.pet import constants, store
-            from agent.pet.render import PetRenderer
+            from agent.pet.render import PetRenderer, render_mode_is_off
             from hermes_cli.config import load_config
 
             cfg = load_config()
@@ -4367,7 +4367,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin):
             scale = float(pet_cfg.get("scale", constants.DEFAULT_SCALE) or constants.DEFAULT_SCALE)
             cols = constants.resolve_cols(scale, pet_cfg.get("unicode_cols", 0))
 
-            if not enabled:
+            if not enabled or render_mode_is_off(pet_cfg.get("render_mode")):
                 with self._pet_lock:
                     self._pet_enabled = False
                     self._pet_renderer = None

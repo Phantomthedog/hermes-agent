@@ -11,9 +11,46 @@ from unittest.mock import ANY, patch
 
 import pytest
 
+from agent.pet import store
+from agent.pet.constants import FRAME_H, FRAME_W
 from hermes_constants import reset_hermes_home_override, set_hermes_home_override
 from hermes_cli.active_sessions import active_session_registry_snapshot
 from tui_gateway import server
+
+
+@pytest.fixture
+def pet_home(tmp_path, monkeypatch):
+    from PIL import Image
+
+    home = tmp_path / ".hermes"
+    home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(home))
+
+    sheet = Image.new("RGBA", (FRAME_W * 8, FRAME_H * 9), (0, 0, 0, 0))
+    pet_dir = store.pets_dir() / "boba"
+    pet_dir.mkdir(parents=True, exist_ok=True)
+    sheet.save(pet_dir / "spritesheet.webp")
+    (pet_dir / "pet.json").write_text(
+        '{"id":"boba","displayName":"Boba","description":"d","spritesheetPath":"spritesheet.webp"}',
+        encoding="utf-8",
+    )
+    return home
+
+
+def test_pet_cells_render_mode_off_keeps_desktop_pet_info_enabled(pet_home):
+    import yaml
+
+    (pet_home / "config.yaml").write_text(
+        yaml.dump({"display": {"pet": {"enabled": True, "render_mode": False, "slug": "boba"}}}),
+        encoding="utf-8",
+    )
+
+    cells = server._methods["pet.cells"]("r1", {"state": "idle"})["result"]
+    info = server._methods["pet.info"]("r2", {})["result"]
+
+    assert cells == {"enabled": False}
+    assert info["enabled"] is True
+    assert info["slug"] == "boba"
 
 
 def test_session_create_rejects_at_active_session_limit(monkeypatch, tmp_path):

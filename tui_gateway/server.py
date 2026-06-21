@@ -5647,6 +5647,11 @@ def _(rid, params: dict) -> dict:
         if not bool(pet_cfg.get("enabled")):
             return _ok(rid, {"enabled": False})
 
+        # ``display.pet.render_mode`` is terminal-only.  ``off`` should hide the
+        # CLI/TUI pet while leaving the desktop canvas (`pet.info`) active.
+        if render.render_mode_is_off(pet_cfg.get("render_mode")):
+            return _ok(rid, {"enabled": False})
+
         pet = store.resolve_active_pet(str(pet_cfg.get("slug", "") or ""))
         if pet is None or not pet.exists:
             return _ok(rid, {"enabled": False})

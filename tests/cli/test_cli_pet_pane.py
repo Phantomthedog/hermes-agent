@@ -134,3 +134,19 @@ def test_pet_resolve_config_enables_and_disables(boba_like):
     cli_obj._pet_resolve_config()
     assert cli_obj._pet_enabled is False
     assert cli_obj._pet_renderer is None
+
+
+def test_pet_resolve_config_honors_terminal_render_mode_off(boba_like):
+    from hermes_cli.config import load_config, save_config
+
+    cli_obj = _make_cli()
+
+    cfg = load_config()
+    cfg.setdefault("display", {}).setdefault("pet", {})
+    cfg["display"]["pet"].update({"enabled": True, "render_mode": False, "slug": "boba"})
+    save_config(cfg)
+
+    cli_obj._pet_resolve_config()
+
+    assert cli_obj._pet_enabled is False
+    assert cli_obj._pet_renderer is None

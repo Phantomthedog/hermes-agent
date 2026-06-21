@@ -157,7 +157,9 @@ def _cmd_show(args) -> int:
         _err("✗ no pet to show — run: hermes pets install boba")
         return 1
 
-    mode_cfg = getattr(args, "mode", None) or str(cfg.get("render_mode", "auto") or "auto")
+    mode_cfg = getattr(args, "mode", None)
+    if mode_cfg is None:
+        mode_cfg = cfg.get("render_mode", "auto")
     scale = float(getattr(args, "scale", 0) or cfg.get("scale", DEFAULT_SCALE) or DEFAULT_SCALE)
     cols = resolve_cols(scale, cfg.get("unicode_cols", 0))
 
@@ -251,7 +253,7 @@ def _cmd_doctor(args) -> int:
     cfg = _pet_config()
     enabled = bool(cfg.get("enabled"))
     configured_slug = str(cfg.get("slug", "") or "")
-    mode_cfg = str(cfg.get("render_mode", "auto") or "auto")
+    mode_cfg = cfg.get("render_mode", "auto")
 
     pets = store.installed_pets()
     active = store.resolve_active_pet(configured_slug)
