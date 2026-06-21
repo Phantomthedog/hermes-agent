@@ -43,6 +43,11 @@ import uuid
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures.thread import _worker
+
+try:  # Python 3.14+ tracks worker queues for interpreter shutdown wakeups.
+    from concurrent.futures.thread import _threads_queues
+except ImportError:  # pragma: no cover - older Python private API
+    _threads_queues = None  # type: ignore[assignment]
 from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -67,19 +72,34 @@ class _DaemonThreadPoolExecutor(ThreadPoolExecutor):
         num_threads = len(self._threads)
         if num_threads < self._max_workers:
             thread_name = "%s_%d" % (self._thread_name_prefix or self, num_threads)
+            # ThreadPoolExecutor's private worker API changed in Python 3.14:
+            # _worker(executor_ref, ctx, queue) replaced the older
+            # _worker(executor_ref, queue, initializer, initargs). Keep the
+            # daemon-thread behavior while matching the runtime's stdlib API.
+            create_worker_context = getattr(self, "_create_worker_context", None)
+            if callable(create_worker_context):
+                args = (
+                    weakref.ref(self, weakref_cb),
+                    create_worker_context(),
+                    self._work_queue,
+                )
+            else:  # pragma: no cover - Python <= 3.13 compatibility
+                args = (
+                    weakref.ref(self, weakref_cb),
+                    self._work_queue,
+                    getattr(self, "_initializer", None),
+                    getattr(self, "_initargs", ()),
+                )
             t = threading.Thread(
                 name=thread_name,
                 target=_worker,
-                args=(
-                    weakref.ref(self, weakref_cb),
-                    self._work_queue,
-                    self._initializer,
-                    self._initargs,
-                ),
+                args=args,
                 daemon=True,
             )
             t.start()
             self._threads.add(t)
+            if _threads_queues is not None:
+                _threads_queues[t] = self._work_queue  # type: ignore[index]
 
 
 # ---------------------------------------------------------------------------

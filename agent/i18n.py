@@ -114,14 +114,17 @@ def _locales_dir() -> Path:
             override,
         )
 
-    # agent/locales/ -- package-data directory inside the agent package.
-    bundled = Path(__file__).resolve().parent / "locales"
-    if bundled.is_dir():
-        return bundled
     # agent/i18n.py -> agent/ -> repo root (source checkout, editable install)
     source_dir = Path(__file__).resolve().parent.parent / "locales"
     if source_dir.is_dir():
         return source_dir
+
+    # agent/locales/ -- package-data directory inside the agent package. Check
+    # this after repo-root locales so editable/source checkouts do not prefer a
+    # stale package-data mirror over the live source catalog.
+    bundled = Path(__file__).resolve().parent / "locales"
+    if bundled.is_dir():
+        return bundled
 
     # pip wheel install: data-files lands under the interpreter data scheme.
     # ``data`` (== sys.prefix in a venv) is where setuptools data-files extract

@@ -97,6 +97,12 @@ def _build_subprocess_env() -> dict[str, str]:
     env = os.environ.copy()
     home = _resolve_home_dir()
     env["HOME"] = home
+    env["HERMES_REAL_HOME"] = home
+    # Copilot/GitHub CLI credentials live under the real OS-user HOME. Do not
+    # let the general Hermes subprocess policy move this ACP child into an
+    # isolated profile HOME by default (especially in WSL/container-detected
+    # environments); still expose HERMES_REAL_HOME for helpers that need it.
+    env["TERMINAL_HOME_MODE"] = "real"
     from hermes_constants import apply_subprocess_home_env
     apply_subprocess_home_env(env)
     return env
