@@ -1,0 +1,19 @@
+name: work-wiki
+version: "0.1.0"
+description: "Automatic Hermes mission memory: SQLite work ledger, Markdown mission wiki rendering, resume context, and /wiki correction commands."
+author: Jack / Hermes
+auto_load: true
+hooks:
+  - on_session_start
+  - pre_llm_call
+  - transform_llm_output
+  - pre_tool_call
+  - post_tool_call
+  - subagent_start
+  - subagent_stop
+  - post_llm_call
+  - on_session_end
+  - on_session_finalize
+  - on_session_reset
+commands:
+  - wiki
