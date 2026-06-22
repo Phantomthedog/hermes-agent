@@ -19,6 +19,7 @@ depend on:
 
 from __future__ import annotations
 
+import time
 from unittest.mock import patch
 
 
@@ -185,6 +186,44 @@ def test_build_models_payload_does_not_call_provider_model_ids():
     mock_pm.assert_not_called()
 
 
+def test_picker_api_model_probe_uses_short_timeout():
+    from hermes_cli import model_switch
+
+    with patch("hermes_cli.models.fetch_api_models", return_value=["m1"]) as mock_fetch:
+        assert model_switch._fetch_picker_api_models(
+            "sk-test", "https://api.example.test/v1"
+        ) == ["m1"]
+
+    mock_fetch.assert_called_once_with(
+        "sk-test",
+        "https://api.example.test/v1",
+        timeout=model_switch._PICKER_MODEL_DISCOVERY_TIMEOUT,
+    )
+
+
+def test_picker_api_model_batch_runs_probes_concurrently(monkeypatch):
+    from hermes_cli import model_switch
+
+    def slow_probe(api_key: str, api_url: str) -> list[str]:
+        time.sleep(0.1)
+        return [api_url.rsplit("/", 1)[-1]]
+
+    monkeypatch.setattr(model_switch, "_fetch_picker_api_models", slow_probe)
+
+    started = time.perf_counter()
+    result = model_switch._fetch_picker_api_models_batch(
+        [
+            (0, "sk-a", "https://example.test/a"),
+            (1, "sk-b", "https://example.test/b"),
+            (2, "sk-c", "https://example.test/c"),
+        ]
+    )
+    elapsed = time.perf_counter() - started
+
+    assert result == {0: ["a"], 1: ["b"], 2: ["c"]}
+    assert elapsed < 0.25
+
+
 def test_build_models_payload_uses_cached_nous_tier_by_default():
     """Picker payloads should not force fresh Nous account checks.
 
@@ -248,11 +287,12 @@ def test_pricing_uses_cached_nous_tier_by_default():
                     "completion": "0.000002",
                 },
             },
-        ),
+        ) as mock_pricing,
         patch("hermes_cli.models.check_nous_free_tier", return_value=False) as mock_free,
     ):
         build_models_payload(ctx, pricing=True)
 
+    mock_pricing.assert_called_once_with("nous", timeout=1.5)
     mock_free.assert_called_once_with(force_fresh=False)
 
 
@@ -269,11 +309,12 @@ def test_pricing_can_force_fresh_nous_tier():
                     "completion": "0.000002",
                 },
             },
-        ),
+        ) as mock_pricing,
         patch("hermes_cli.models.check_nous_free_tier", return_value=False) as mock_free,
     ):
         build_models_payload(ctx, pricing=True, force_fresh_nous_tier=True)
 
+    mock_pricing.assert_called_once_with("nous", timeout=1.5)
     mock_free.assert_called_once_with(force_fresh=True)
 
 

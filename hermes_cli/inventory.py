@@ -381,7 +381,10 @@ def _apply_pricing(
         if not models:
             continue
         try:
-            raw_pricing = get_pricing_for_provider(slug) or {}
+            raw_pricing = get_pricing_for_provider(
+                slug,
+                timeout=1.5,
+            ) or {}
         except Exception:
             raw_pricing = {}
         if not raw_pricing:

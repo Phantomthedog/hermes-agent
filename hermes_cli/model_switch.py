@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import List, NamedTuple, Optional
 
@@ -45,6 +46,63 @@ from agent.models_dev import (
 )
 
 logger = logging.getLogger(__name__)
+
+_PICKER_MODEL_DISCOVERY_TIMEOUT = 1.5
+
+
+def _fetch_picker_api_models(api_key: str, api_url: str) -> list[str]:
+    """Fetch an OpenAI-compatible ``/models`` list for picker display.
+
+    The interactive ``/model`` picker is latency-sensitive. Custom/provider
+    endpoints can be slow or temporarily offline, so picker discovery uses the
+    same short timeout as the LM Studio picker path and fails open to the
+    explicit configured model list.
+    """
+    from hermes_cli.models import fetch_api_models
+
+    live_models = fetch_api_models(
+        api_key,
+        api_url,
+        timeout=_PICKER_MODEL_DISCOVERY_TIMEOUT,
+    )
+    return list(live_models or [])
+
+
+def _fetch_picker_api_models_batch(
+    probes: list[tuple[int, str, str]],
+) -> dict[int, list[str]]:
+    """Run independent custom-provider ``/models`` probes concurrently.
+
+    Returns ``{probe_index: model_ids}`` for successful, non-empty probes.
+    Exceptions are swallowed so a single slow/offline endpoint never blocks or
+    breaks the picker.
+    """
+    if not probes:
+        return {}
+    if len(probes) == 1:
+        idx, api_key, api_url = probes[0]
+        try:
+            models = _fetch_picker_api_models(api_key, api_url)
+        except Exception:
+            return {}
+        return {idx: models} if models else {}
+
+    results: dict[int, list[str]] = {}
+    max_workers = min(8, len(probes))
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="picker-models") as pool:
+        future_map = {
+            pool.submit(_fetch_picker_api_models, api_key, api_url): idx
+            for idx, api_key, api_url in probes
+        }
+        for fut in as_completed(future_map):
+            idx = future_map[fut]
+            try:
+                models = fut.result()
+            except Exception:
+                continue
+            if models:
+                results[idx] = models
+    return results
 
 
 def _bare_custom_provider_def(current_base_url: str) -> Optional[ProviderDef]:
@@ -1218,18 +1276,20 @@ def prewarm_picker_cache_async() -> Optional["_threading.Thread"]:
 
     def _warm() -> None:
         try:
-            from hermes_cli.inventory import load_picker_context
+            from hermes_cli.inventory import build_models_payload, load_picker_context
 
             ctx = load_picker_context()
-            # Calling this is what populates cached_provider_model_ids() ->
-            # provider_models_cache.json for each authed provider. We discard
-            # the result; the side effect (warm disk cache) is the point.
-            list_authenticated_providers(
-                current_provider=ctx.current_provider,
-                current_base_url=ctx.current_base_url,
-                current_model=ctx.current_model,
-                user_providers=ctx.user_providers,
-                custom_providers=ctx.custom_providers,
+            # Warm the same payload shape used by the TUI model.options
+            # handler. This populates provider_models_cache.json for authed
+            # providers, probes custom providers off the user's critical path,
+            # and fills the in-process pricing cache before /model opens.
+            build_models_payload(
+                ctx,
+                include_unconfigured=True,
+                picker_hints=True,
+                canonical_order=True,
+                pricing=True,
+                capabilities=True,
             )
         except Exception:
             # Best-effort warmup — never surface errors into the session.
@@ -1746,6 +1806,8 @@ def list_authenticated_providers(
     # produces two picker rows: one bare-slug ("openrouter") from section 3
     # and one "custom:openrouter" from section 4, both labelled identically.
     _section3_emitted_pairs: set = set()
+    _section3_probe_rows: dict[int, dict] = {}
+    _section3_probe_requests: list[tuple[int, str, str]] = []
     if user_providers and isinstance(user_providers, dict):
         for ep_name, ep_cfg in user_providers.items():
             if not isinstance(ep_cfg, dict):
@@ -1815,16 +1877,7 @@ def list_authenticated_providers(
             should_probe = bool(api_url) and discover and (
                 bool(api_key) or not has_explicit_models
             )
-            if should_probe:
-                try:
-                    from hermes_cli.models import fetch_api_models
-                    live_models = fetch_api_models(api_key, api_url)
-                    if live_models:
-                        models_list = live_models
-                except Exception:
-                    pass
-
-            results.append({
+            row = {
                 "slug": ep_name,
                 "name": display_name,
                 "is_current": ep_name == current_provider,
@@ -1833,7 +1886,13 @@ def list_authenticated_providers(
                 "total_models": len(models_list) if models_list else 0,
                 "source": "user-config",
                 "api_url": api_url,
-            })
+            }
+            if should_probe:
+                probe_idx = len(_section3_probe_requests)
+                _section3_probe_requests.append((probe_idx, api_key, api_url))
+                _section3_probe_rows[probe_idx] = row
+
+            results.append(row)
             seen_slugs.add(ep_name.lower())
             seen_slugs.add(custom_provider_slug(display_name).lower())
             _pair = (
@@ -1842,6 +1901,14 @@ def list_authenticated_providers(
             )
             if _pair[0] and _pair[1]:
                 _section3_emitted_pairs.add(_pair)
+
+    for _probe_idx, _live_models in _fetch_picker_api_models_batch(
+        _section3_probe_requests
+    ).items():
+        _row = _section3_probe_rows.get(_probe_idx)
+        if _row is not None:
+            _row["models"] = _live_models
+            _row["total_models"] = len(_live_models)
 
     # --- 3b. Active bare custom endpoint from model config ---
     # A config can still use the direct one-off form:
@@ -2063,9 +2130,7 @@ def list_authenticated_providers(
             )
             if should_probe:
                 try:
-                    from hermes_cli.models import fetch_api_models
-
-                    live_models = fetch_api_models(api_key, api_url)
+                    live_models = _fetch_picker_api_models(api_key, api_url)
                     if live_models:
                         grp["models"] = live_models
                         grp["total_models"] = len(live_models)

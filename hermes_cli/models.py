@@ -1539,17 +1539,23 @@ def _resolve_nous_pricing_credentials() -> tuple[str, str]:
     return ("", _DEFAULT_NOUS_INFERENCE_BASE)
 
 
-def get_pricing_for_provider(provider: str, *, force_refresh: bool = False) -> dict[str, dict[str, str]]:
+def get_pricing_for_provider(
+    provider: str,
+    *,
+    force_refresh: bool = False,
+    timeout: float = 8.0,
+) -> dict[str, dict[str, str]]:
     """Return live pricing for providers that support it (openrouter, nous, novita)."""
     normalized = normalize_provider(provider)
     if normalized == "openrouter":
         return fetch_models_with_pricing(
             api_key=_resolve_openrouter_api_key(),
             base_url="https://openrouter.ai/api",
+            timeout=timeout,
             force_refresh=force_refresh,
         )
     if normalized == "novita":
-        return _fetch_novita_pricing(force_refresh=force_refresh)
+        return _fetch_novita_pricing(timeout=timeout, force_refresh=force_refresh)
     if normalized == "nous":
         api_key, base_url = _resolve_nous_pricing_credentials()
         if base_url:
@@ -1561,6 +1567,7 @@ def get_pricing_for_provider(provider: str, *, force_refresh: bool = False) -> d
             return fetch_models_with_pricing(
                 api_key=api_key,
                 base_url=stripped,
+                timeout=timeout,
                 force_refresh=force_refresh,
             )
     return {}
