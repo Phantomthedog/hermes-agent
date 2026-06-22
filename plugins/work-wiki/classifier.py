@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,19 @@ TRIVIAL_PATTERNS = [
     re.compile(r"^\s*\d+\s*[-+*/]\s*\d+\s*$"),
 ]
 
+MAX_TITLE_CHARS = 90
+MAX_OBJECTIVE_CHARS = 1200
+
+SKILL_LOADER_RE = re.compile(
+    r'^\s*\[IMPORTANT:\s+The user has invoked the "[^"]+" skill,.*?full skill content is loaded below\.\]',
+    re.IGNORECASE | re.DOTALL,
+)
+
+TAG_BLOCK_RE = re.compile(
+    r"<(environment_context|codex_internal_context|system_context)[^>]*>.*?</\1>",
+    re.IGNORECASE | re.DOTALL,
+)
+
 
 @dataclass
 class Classification:
@@ -64,7 +78,7 @@ class Classification:
 
 
 def classify_user_message(message: Any, *, tool_activity: bool = False) -> Classification:
-    text = _text(message)
+    text = normalize_user_text(_text(message))
     lowered = text.lower()
     if not text.strip():
         return Classification(material=False, confidence=0.0, reason_codes=["empty"])
@@ -137,7 +151,7 @@ def resolve_or_create_mission(
     existing = store.focus_for_session(session_id, branch_id=branch_id)
     if existing:
         return existing
-    text = _text(user_message)
+    text = normalize_user_text(_text(user_message))
     if not classification.material:
         return None
 
@@ -196,7 +210,7 @@ def resolve_or_create_mission(
 
 
 def infer_title(text: str) -> str:
-    stripped = " ".join(text.strip().split())
+    stripped = " ".join(normalize_user_text(text).strip().split())
     stripped = re.sub(r"^(please\s+)?(can you\s+|could you\s+)?", "", stripped, flags=re.I)
     stripped = re.sub(r"^(continue|resume)\s+", "Continue ", stripped, flags=re.I)
     if len(stripped) <= 78:
@@ -204,15 +218,15 @@ def infer_title(text: str) -> str:
     # Prefer a filename/quoted subject if present.
     quoted = re.findall(r'"([^"]{8,90})"', stripped)
     if quoted:
-        return quoted[0]
+        return _cap_text(quoted[0], MAX_TITLE_CHARS)
     words = stripped.split()
-    return " ".join(words[:10]).rstrip(".,:;")[:90]
+    return _cap_text(" ".join(words[:10]).rstrip(".,:;"), MAX_TITLE_CHARS)
 
 
 def infer_objective(text: str, title: str) -> str:
-    clean = text.strip()
+    clean = normalize_user_text(text).strip()
     if len(clean) > 20:
-        return clean
+        return _cap_text(clean, MAX_OBJECTIVE_CHARS)
     return title
 
 
@@ -291,3 +305,32 @@ def _text(message: Any) -> str:
                 parts.append(str(part))
         return "\n".join(parts)
     return str(message)
+
+
+def normalize_user_text(text: str) -> str:
+    """Return the durable user request, excluding injected runtime prompts."""
+    text = unicodedata.normalize("NFKC", str(text or "")).replace("\ufffd", "")
+    text = "".join(ch if ch in "\n\t" or not unicodedata.category(ch).startswith("C") else " " for ch in text)
+    text = text.strip()
+    if not text:
+        return ""
+    objective = re.search(r"<objective>\s*(.*?)\s*</objective>", text, flags=re.DOTALL | re.IGNORECASE)
+    if objective:
+        text = objective.group(1)
+    else:
+        text = TAG_BLOCK_RE.sub(" ", text)
+    if SKILL_LOADER_RE.match(text):
+        return ""
+    if text.lower().startswith("review the conversation above and update the skill library."):
+        return ""
+    text = re.sub(r"^\s*<[^>]+>\s*", " ", text)
+    text = " ".join(text.split())
+    return _cap_text(text, MAX_OBJECTIVE_CHARS)
+
+
+def _cap_text(text: str, limit: int) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    clipped = text[: max(0, limit - 3)].rsplit(" ", 1)[0].rstrip(".,:;")
+    return (clipped or text[: max(0, limit - 3)]).rstrip() + "..."

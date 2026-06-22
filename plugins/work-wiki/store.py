@@ -695,6 +695,20 @@ class WorkWikiStore:
             ).fetchall()
             return [self._work_from_row(row) for row in rows]
 
+    def missions_since(self, since_iso: str, limit: int = 100) -> list[WorkItem]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM work_items
+                WHERE work_kind='mission'
+                  AND updated_at >= ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (since_iso, limit),
+            ).fetchall()
+            return [self._work_from_row(row) for row in rows]
+
     def add_event(
         self,
         *,

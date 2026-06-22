@@ -243,6 +243,7 @@ class PluginManifest:
     requires_env: List[Union[str, Dict[str, Any]]] = field(default_factory=list)
     provides_tools: List[str] = field(default_factory=list)
     provides_hooks: List[str] = field(default_factory=list)
+    auto_load: bool = False
     source: str = ""        # "user", "project", or "entrypoint"
     path: Optional[str] = None
     # Plugin kind — see plugins.py module docstring for semantics.
@@ -1275,7 +1276,9 @@ class PluginManager:
             # Bundled platform plugins (gateway adapters like IRC) auto-load
             # for the same reason: every platform Hermes ships must be
             # available out of the box without the user having to opt in.
-            if manifest.source == "bundled" and manifest.kind in {"backend", "platform"}:
+            if manifest.source == "bundled" and (
+                manifest.kind in {"backend", "platform"} or manifest.auto_load
+            ):
                 self._load_plugin(manifest)
                 continue
 
@@ -1472,6 +1475,7 @@ class PluginManager:
                 requires_env=data.get("requires_env", []),
                 provides_tools=data.get("provides_tools", []),
                 provides_hooks=data.get("provides_hooks", []),
+                auto_load=bool(data.get("auto_load", False)),
                 source=source,
                 path=str(plugin_dir),
                 kind=kind,

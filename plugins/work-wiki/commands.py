@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import argparse
 import shlex
 from typing import Any
 
 from .classifier import classify_user_message, detect_project_root, resolve_or_create_mission
+from .curator import KnowledgeCurator
 from .renderer import MarkdownRenderer
 from .store import WorkItem, WorkWikiStore
 
@@ -24,6 +26,7 @@ HELP = """Work Wiki commands:
   /wiki block <work-id> [reason]
   /wiki inbox
   /wiki conflicts
+  /wiki curate [--apply] [--limit N] [--since-days N] [--work-id ID] [--provider P] [--model M]
   /wiki review
   /wiki reconcile
   /wiki repair
@@ -79,6 +82,8 @@ class CommandHandler:
             return self.block(rest)
         if cmd == "inbox":
             return self.inbox()
+        if cmd == "curate":
+            return self.curate(rest)
         if cmd in {"conflicts", "review"}:
             return self.review()
         if cmd == "reconcile":
@@ -416,6 +421,37 @@ class CommandHandler:
         if not events:
             return "No unassigned material events."
         return "\n".join(f"{row['event_id']} {row['event_type']}: {row['summary']}" for row in events)
+
+    def curate(self, args: list[str]) -> str:
+        parser = argparse.ArgumentParser(prog="/wiki curate", add_help=False)
+        parser.add_argument("--apply", action="store_true")
+        parser.add_argument("--limit", type=int, default=8)
+        parser.add_argument("--since-days", type=int, default=0)
+        parser.add_argument("--work-id", default="")
+        parser.add_argument("--provider", default="")
+        parser.add_argument("--model", default="")
+        parser.add_argument("--max-updates", type=int, default=8)
+        parser.add_argument("--prompt-only", action="store_true")
+        parser.add_argument("-h", "--help", action="store_true")
+        try:
+            parsed = parser.parse_args(args)
+        except SystemExit:
+            return "Usage: /wiki curate [--apply] [--limit N] [--since-days N] [--work-id ID] [--provider P] [--model M] [--max-updates N] [--prompt-only]"
+        if parsed.help:
+            return "Usage: /wiki curate [--apply] [--limit N] [--since-days N] [--work-id ID] [--provider P] [--model M] [--max-updates N] [--prompt-only]"
+        result = KnowledgeCurator(self.store.config, self.store).run(
+            apply=bool(parsed.apply),
+            limit=max(1, parsed.limit),
+            work_id=parsed.work_id,
+            since_days=max(0, parsed.since_days),
+            provider=parsed.provider,
+            model=parsed.model,
+            max_updates=max(1, parsed.max_updates),
+            prompt_only=bool(parsed.prompt_only),
+        )
+        if result.applied:
+            self.renderer.render_all()
+        return result.to_text()
 
     def review(self) -> str:
         failures = self.store.render_failures(limit=20)

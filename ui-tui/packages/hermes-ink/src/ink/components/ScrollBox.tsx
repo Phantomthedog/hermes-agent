@@ -73,6 +73,26 @@ export type ScrollBoxProps = Except<Styles, 'textWrap' | 'overflow' | 'overflowX
   stickyScroll?: boolean
 }
 
+export function nextPendingScrollDelta(current: number | undefined, dy: number): number | undefined {
+  const delta = Math.floor(dy)
+
+  if (delta === 0) {
+    return current
+  }
+
+  const pending = current ?? 0
+
+  // A wheel-direction reversal is an explicit user correction.  Do not let
+  // previously queued scroll momentum continue draining in the old direction
+  // after the user starts scrolling back (visible as auto roll-down after a
+  // scroll-up gesture).  Keep the new event so the reversal feels immediate.
+  if (pending !== 0 && Math.sign(pending) !== Math.sign(delta)) {
+    return delta
+  }
+
+  return pending + delta
+}
+
 /**
  * A Box with `overflow: scroll` and an imperative scroll API.
  *
@@ -169,7 +189,7 @@ function ScrollBox({ children, ref, stickyScroll, ...style }: PropsWithChildren<
         el.stickyScroll = false
         manualScrollAtRef.current = Date.now()
         el.scrollAnchor = undefined
-        el.pendingScrollDelta = (el.pendingScrollDelta ?? 0) + Math.floor(dy)
+        el.pendingScrollDelta = nextPendingScrollDelta(el.pendingScrollDelta, dy)
         scrollMutated(el)
       },
       scrollToBottom() {

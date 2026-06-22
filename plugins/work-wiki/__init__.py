@@ -73,6 +73,27 @@ SECRET_RE = re.compile(
     r"(?i)(api[_-]?key|token|secret|password|authorization|bearer)\s*[:=]\s*['\"]?([A-Za-z0-9_\-./+=]{8,})"
 )
 
+PATH_RE = re.compile(r"(?<![\w`])/(?:mnt|home|tmp|var|etc)/[^\s'\"`<>]+")
+NOISY_PATH_TOKENS = ("\\n", "\n", "\r", "$", "@@", "+++", "---", "```", "REMOVED", "FOUND", "PASS", "===")
+STRUCTURED_PATH_KEYS = {
+    "path",
+    "file_path",
+    "filepath",
+    "filename",
+    "target_path",
+    "source_path",
+}
+STRUCTURED_PATH_LIST_KEYS = {
+    "files",
+    "paths",
+    "files_modified",
+    "files_created",
+    "files_deleted",
+    "modified_files",
+    "created_files",
+    "deleted_files",
+}
+
 
 def register(ctx) -> None:
     global _config, _store, _renderer, _promoter, _command_handler
@@ -318,7 +339,7 @@ def on_post_tool_call(**kwargs: Any) -> None:
         },
     )
     if work_id:
-        for path in _extract_paths(kwargs.get("args"), result):
+        for path in _artifact_paths(tool_name, kwargs.get("args"), result):
             _store.add_artifact(work_id, path, description=f"Observed via {tool_name}")
 
 
@@ -801,8 +822,7 @@ def _looks_material_tool(tool_name: str, args: Any) -> bool:
 
 
 def _event_type_for_tool(tool_name: str, result: Any) -> str:
-    result_text = json.dumps(result, default=str, ensure_ascii=False).lower()
-    if "error" in result_text or "failed" in result_text or "traceback" in result_text:
+    if _tool_result_failed(result):
         return "command_failed" if "terminal" in tool_name or "shell" in tool_name else "tool_failed"
     if tool_name in {"write_file", "patch", "apply_patch", "edit_file", "replace_file"}:
         return "file_modified"
@@ -816,7 +836,7 @@ def _event_type_for_tool(tool_name: str, result: Any) -> str:
 
 
 def _tool_summary(tool_name: str, args: Any, result: Any) -> str:
-    paths = _extract_paths(args, result)
+    paths = _artifact_paths(tool_name, args, result)
     if paths:
         return f"{tool_name} touched {', '.join(paths[:3])}"
     if isinstance(args, dict):
@@ -829,7 +849,9 @@ def _tool_summary(tool_name: str, args: Any, result: Any) -> str:
 def _extract_paths(*values: Any) -> list[str]:
     paths: list[str] = []
     for path in _candidate_paths(*values):
-        clean = path.rstrip(".,);]")
+        clean = _clean_path(path)
+        if not clean:
+            continue
         if _path_denied(clean):
             continue
         if clean not in paths:
@@ -837,29 +859,115 @@ def _extract_paths(*values: Any) -> list[str]:
     return paths[:50]
 
 
-def _candidate_paths(*values: Any) -> list[str]:
+def _candidate_paths(*values: Any, allow_plain_text: bool = False) -> list[str]:
     paths: list[str] = []
     for value in values:
         if isinstance(value, dict):
-            for key in ("path", "file_path", "target_path", "workdir"):
+            for key in STRUCTURED_PATH_KEYS:
                 candidate = value.get(key)
                 if isinstance(candidate, str) and candidate.startswith("/"):
                     paths.append(candidate)
+            for key in STRUCTURED_PATH_LIST_KEYS:
+                candidate = value.get(key)
+                if isinstance(candidate, (str, list, tuple, set)):
+                    paths.extend(_candidate_paths(candidate, allow_plain_text=allow_plain_text))
             for nested in value.values():
-                paths.extend(_extract_paths(nested))
+                if isinstance(nested, (dict, list, tuple, set)):
+                    paths.extend(_candidate_paths(nested, allow_plain_text=allow_plain_text))
         elif isinstance(value, list):
             for item in value:
-                paths.extend(_extract_paths(item))
+                paths.extend(_candidate_paths(item, allow_plain_text=allow_plain_text))
         elif isinstance(value, str):
-            paths.extend(re.findall(r"(?<![\w`])/(?:mnt|home|tmp|var|etc)/[^\s'\"`<>]+", value))
+            if allow_plain_text or _looks_like_command_or_patch_output(value):
+                paths.extend(PATH_RE.findall(value[:2000]))
     seen = set()
     out = []
     for path in paths:
-        clean = path.rstrip(".,);]")
+        clean = _clean_path(path)
+        if not clean:
+            continue
         if clean not in seen:
             seen.add(clean)
             out.append(clean)
     return out[:50]
+
+
+def _artifact_paths(tool_name: str, args: Any, result: Any) -> list[str]:
+    values: list[Any] = []
+    if isinstance(args, dict):
+        values.append(args)
+        command = str(args.get("cmd") or args.get("command") or "")
+        if _command_can_touch_files(command):
+            values.append(command[:2000])
+    elif isinstance(args, str) and _command_can_touch_files(args):
+        values.append(args[:2000])
+    if isinstance(result, dict):
+        values.append(result)
+    return _extract_paths(*values)
+
+
+def _clean_path(path: str) -> str:
+    clean = str(path or "").strip().rstrip(".,);]\"'")
+    if not clean.startswith("/"):
+        return ""
+    if any(token in clean for token in NOISY_PATH_TOKENS):
+        return ""
+    if "*" in clean or "?" in clean:
+        return ""
+    if len(clean) > 260:
+        return ""
+    return clean
+
+
+def _looks_like_command_or_patch_output(value: str) -> bool:
+    text = str(value or "")
+    if not text.strip():
+        return False
+    return _command_can_touch_files(text) or any(marker in text for marker in ("*** Begin Patch", "diff --git", "\n+++ ", "\n--- "))
+
+
+def _command_can_touch_files(command: str) -> bool:
+    lowered = str(command or "").lower()
+    return any(
+        token in lowered
+        for token in (
+            "apply_patch",
+            "cat >",
+            "tee ",
+            "python",
+            "node ",
+            "npm ",
+            "pytest",
+            "touch ",
+            "mv ",
+            "cp ",
+            "install ",
+            "git ",
+            "sqlite3 ",
+        )
+    )
+
+
+def _tool_result_failed(result: Any) -> bool:
+    if isinstance(result, dict):
+        for key in ("success", "ok"):
+            if key in result:
+                return not bool(result.get(key))
+        for key in ("failed", "error", "is_error"):
+            if key in result and result.get(key):
+                return True
+        for key in ("exit_code", "returncode", "status_code", "code", "rc"):
+            if key in result:
+                try:
+                    return int(result.get(key)) != 0
+                except (TypeError, ValueError):
+                    pass
+        status = str(result.get("status") or result.get("state") or "").lower()
+        if status in {"failed", "error", "errored", "timeout", "timed_out", "cancelled"}:
+            return True
+        if status in {"ok", "success", "succeeded", "completed", "done"}:
+            return False
+    return False
 
 
 def _metadata_from_response(mission: WorkItem, response: str) -> dict[str, Any]:
@@ -872,10 +980,10 @@ def _metadata_from_response(mission: WorkItem, response: str) -> dict[str, Any]:
     evidence = _extract_section_items(response, ("verified", "verification", "tests", "tested"))
     if evidence:
         updates["evidence"] = list(dict.fromkeys(list(meta.get("evidence", [])) + evidence))[:30]
-    blockers = _extract_section_items(response, ("blocker", "blocked", "failed", "unable"))
-    if blockers and any(word in response.lower() for word in ("blocked", "blocker", "unable", "failed")):
+    blockers = _extract_section_items(response, ("blocker", "blockers", "blocked by", "unable to proceed"))
+    if blockers and any(phrase in response.lower() for phrase in ("blocked by", "blocker", "unable to proceed", "cannot proceed")):
         updates["blockers"] = list(dict.fromkeys(list(meta.get("blockers", [])) + blockers))[:20]
-    paths = _extract_paths(response)
+    paths = _extract_paths(response) if _looks_like_command_or_patch_output(response) else []
     if paths:
         updates["artifacts"] = list(dict.fromkeys(list(meta.get("artifacts", [])) + paths))[:50]
         updates["changed_files"] = list(dict.fromkeys(list(meta.get("changed_files", [])) + paths))[:50]
@@ -935,21 +1043,39 @@ def _extract_section_items(text: str, names: tuple[str, ...]) -> list[str]:
     capture = False
     for raw in lines:
         line = raw.strip()
-        lower = line.lower().strip(":")
+        if line.startswith("```") or line in {"`", "```text", "```bash"}:
+            continue
         if not line:
             if capture:
                 capture = False
             continue
-        if any(name in lower for name in names) and len(line) < 80:
+        if _is_section_heading(line, names):
             capture = True
             continue
         if capture and (line.startswith("-") or line.startswith("*")):
             items.append(line.lstrip("-* ").strip())
         elif capture and re.match(r"^\d+[.)]\s+", line):
             items.append(re.sub(r"^\d+[.)]\s+", "", line).strip())
-        elif capture and line.startswith("`"):
-            items.append(line)
-    return [item for item in items if item][:20]
+    return [item for item in items if _valid_metadata_item(item)][:20]
+
+
+def _is_section_heading(line: str, names: tuple[str, ...]) -> bool:
+    stripped = line.strip().strip("#").strip()
+    lower = stripped.lower().strip(":")
+    if len(stripped) > 80:
+        return False
+    return any(lower == name or lower.startswith(f"{name}:") for name in names)
+
+
+def _valid_metadata_item(item: str) -> bool:
+    stripped = str(item or "").strip()
+    if not stripped or stripped.startswith("```"):
+        return False
+    if stripped in {"`", "```text", "```bash", "evidence", "summary text"}:
+        return False
+    if stripped in {"@@", "+++", "---"}:
+        return False
+    return len(stripped) >= 4
 
 
 def _summarize_response(response: str) -> str:
@@ -1006,7 +1132,7 @@ def _redact(value: Any) -> Any:
         return [_redact(item) for item in value[:50]]
     if isinstance(value, str):
         text = value[:4000]
-        for path in _candidate_paths(text):
+        for path in _candidate_paths(text, allow_plain_text=True):
             if _path_denied(path):
                 text = text.replace(path, "[REDACTED_PATH]")
         text = SECRET_RE.sub(r"\1=[REDACTED]", text)

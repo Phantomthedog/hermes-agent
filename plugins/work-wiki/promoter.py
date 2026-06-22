@@ -58,11 +58,15 @@ class KnowledgePromoter:
             marker = f"<!-- work-wiki:promotion:{item_hash} -->"
             if marker in content:
                 continue
+            evidence = self._evidence_for(item, updates, summary)
             content = content.rstrip() + "\n\n" + "\n".join(
                 [
                     marker,
                     f"- {item}",
-                    f"  Source: [{work.title}](../{work.wiki_path}) checkpoint `{checkpoint_id}`.",
+                    f"  Source mission: [{work.title}](../{work.wiki_path}).",
+                    f"  checkpoint `{checkpoint_id}`.",
+                    f"  Evidence: {evidence}",
+                    f"  Target page: `{target_rel}`.",
                 ]
             ) + "\n"
             added.append(item)
@@ -81,7 +85,13 @@ class KnowledgePromoter:
             event_type="knowledge_promoted",
             source="work-wiki",
             summary=f"Promoted {len(added)} finding(s) to {target_rel}",
-            payload={"target": target_rel, "checkpoint_id": checkpoint_id, "items": added},
+            payload={
+                "target": target_rel,
+                "checkpoint_id": checkpoint_id,
+                "source_mission": work.wiki_path,
+                "items": added,
+                "evidence": [self._evidence_for(item, updates, summary) for item in added],
+            },
             checkpoint_id=checkpoint_id,
         )
         return [target_rel]
@@ -110,6 +120,21 @@ class KnowledgePromoter:
                 item = f"Review required: {item}"
             candidates.append(item)
         return list(dict.fromkeys(candidates))[:8]
+
+    def _evidence_for(self, item: str, updates: dict[str, Any], summary: str) -> str:
+        evidence_values: list[str] = []
+        raw = updates.get("evidence")
+        if isinstance(raw, str):
+            evidence_values.append(raw)
+        elif isinstance(raw, list):
+            evidence_values.extend(str(value) for value in raw)
+        if summary:
+            evidence_values.append(summary)
+        for value in evidence_values:
+            evidence = " ".join(str(value).strip().split())
+            if evidence and evidence != item:
+                return evidence[:220]
+        return "Promoted from checkpoint summary and extracted mission metadata."
 
     def _target_for(self, work: WorkItem, items: list[str]) -> tuple[str, str]:
         text = " ".join([work.title, str(work.metadata.get("objective", "")), *items]).lower()

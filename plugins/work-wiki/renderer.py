@@ -415,7 +415,7 @@ class MarkdownRenderer:
         return "\n".join(lines).rstrip() + "\n"
 
     def _recovery_dashboard(self, missions: list[WorkItem]) -> str:
-        unassigned = self.store.unassigned_events(limit=50)
+        unassigned = self._actionable_unassigned_events(limit=50)
         failures = self.store.render_failures(limit=50)
         needs_review = [m for m in missions if m.status == "needs_review"]
         active_delegates = self.store.active_delegations(limit=50)
@@ -740,10 +740,34 @@ class MarkdownRenderer:
         return "\n".join(f"- `{row['path_or_reference']}` - {row['description'] or row['artifact_type']}" for row in rows)
 
     def _unassigned_activity(self) -> str:
-        rows = self.store.unassigned_events(limit=20)
+        rows = self._actionable_unassigned_events(limit=20)
         if not rows:
             return "No unassigned material events."
         return "\n".join(f"- `{row['event_id']}` {row['event_type']}: {row['summary']}" for row in rows)
+
+    def _actionable_unassigned_events(self, limit: int = 20) -> list[Any]:
+        lifecycle_noise = {
+            "session_turn_ended",
+            "session_finalized",
+            "session_resumed",
+            "codex_session_started",
+            "tool_started",
+            "command_executed",
+        }
+        noisy_fragments = ("\\n", "$rel", "@@", "+++", "REMOVED", "FOUND", "PASS", "===")
+        rows = []
+        for row in self.store.unassigned_events(limit=max(limit * 4, 50)):
+            summary = str(row["summary"] or "")
+            if row["event_type"] in lifecycle_noise:
+                continue
+            if any(fragment in summary for fragment in noisy_fragments):
+                continue
+            if summary.startswith("Codex Bash: printf CODEX_") or summary.startswith("Codex exec_command: printf CODEX_"):
+                continue
+            rows.append(row)
+            if len(rows) >= limit:
+                break
+        return rows
 
     def _render_failures(self) -> str:
         rows = self.store.render_failures(limit=20)
