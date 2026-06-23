@@ -99,7 +99,7 @@ def _replace_block(existing: str, name: str, content: str) -> tuple[str, bool]:
     block = _managed_block(name, content)
     pattern = re.compile(re.escape(start) + r".*?" + re.escape(end), re.DOTALL)
     if pattern.search(existing):
-        return pattern.sub(block, existing), True
+        return pattern.sub(lambda _match: block, existing), True
     if existing and not existing.endswith("\n"):
         existing += "\n"
     return existing + "\n" + block + "\n", True

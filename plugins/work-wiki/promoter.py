@@ -74,7 +74,7 @@ class KnowledgePromoter:
         if not added:
             return []
 
-        content = self._touch_updated_at(content)
+        content = self._touch_updated(content)
         _atomic_write(target_path, content)
         related = list(work.metadata.get("related_knowledge", []))
         if target_rel not in related:
@@ -151,17 +151,17 @@ class KnowledgePromoter:
         return f"concepts/{slugify(title, 'mission-findings')}.md", title
 
     def _new_page(self, title: str) -> str:
-        now = utc_now()
+        today = utc_now()[:10]
         return "\n".join(
             [
                 "---",
                 f"title: {title}",
+                f"created: {today}",
+                f"updated: {today}",
                 "type: concept",
-                f"created_at: {now}",
-                f"updated_at: {now}",
-                "tags:",
-                "  - mission-memory",
-                "  - promoted-knowledge",
+                "tags: [mission-memory, promoted-knowledge]",
+                "sources: [mission-control.md]",
+                "confidence: medium",
                 "---",
                 "",
                 f"# {title}",
@@ -169,12 +169,14 @@ class KnowledgePromoter:
             ]
         )
 
-    def _touch_updated_at(self, content: str) -> str:
-        now = utc_now()
+    def _touch_updated(self, content: str) -> str:
+        today = utc_now()[:10]
+        if re.search(r"^updated:\s*.*$", content, flags=re.MULTILINE):
+            return re.sub(r"^updated:\s*.*$", f"updated: {today}", content, count=1, flags=re.MULTILINE)
         if re.search(r"^updated_at:\s*.*$", content, flags=re.MULTILINE):
-            return re.sub(r"^updated_at:\s*.*$", f"updated_at: {now}", content, count=1, flags=re.MULTILINE)
+            return re.sub(r"^updated_at:\s*.*$", f"updated: {today}", content, count=1, flags=re.MULTILINE)
         if content.startswith("---\n"):
             end = content.find("\n---\n", 4)
             if end != -1:
-                return content[:end] + f"\nupdated_at: {now}" + content[end:]
+                return content[:end] + f"\nupdated: {today}" + content[end:]
         return content

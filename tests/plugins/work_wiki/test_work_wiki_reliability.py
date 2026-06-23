@@ -203,6 +203,42 @@ def test_renderer_handles_large_mission_set_with_dashboard_indexes(monkeypatch, 
     assert len(mission_pages) == 180
 
 
+def test_renderer_rerenders_blocks_with_windows_backslashes(monkeypatch, tmp_path):
+    plugin, wiki, _db = _modules(monkeypatch, tmp_path)
+    store = plugin._store
+    renderer = plugin._renderer
+
+    project = store.ensure_project(title="Windows Path Project", project_root="/tmp/windows-path")
+    mission = store.create_mission(
+        title="Windows Path Mission",
+        objective="Verify renderer updates managed blocks that contain Windows paths.",
+        project_work_id=project.work_id,
+        project_root="/tmp/windows-path",
+        session_id="windows-path",
+        branch_id="main",
+    )
+    store.update_work_metadata(
+        mission.work_id,
+        {
+            "current_state": r"Codex helper path is C:\Users\Phantom\.local\bin\codex-33.ps1.",
+            "evidence": [r"Verified C:\Users\Phantom\.local\bin\codex-33.ps1 launches Codex."],
+            "changed_files": [r"C:\Users\Phantom\.local\bin\codex-33.ps1"],
+        },
+    )
+
+    renderer.render_mission(store.get_work(mission.work_id))
+    store.update_work_metadata(
+        mission.work_id,
+        {"next_actions": [r"Keep C:\Users\Phantom\.local\bin on PATH."]},
+    )
+    renderer.render_mission(store.get_work(mission.work_id))
+
+    mission_page = next((wiki / "work" / "missions").glob("*.md"))
+    text = mission_page.read_text(encoding="utf-8")
+    assert r"C:\Users\Phantom\.local\bin\codex-33.ps1" in text
+    assert r"Keep C:\Users\Phantom\.local\bin on PATH." in text
+
+
 def test_store_lists_missions_since_cutoff(monkeypatch, tmp_path):
     plugin, _wiki, db = _modules(monkeypatch, tmp_path)
     store = plugin._store
