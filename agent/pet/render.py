@@ -52,8 +52,6 @@ def render_mode_is_off(configured: str | bool | None) -> bool:
     if isinstance(configured, bool):
         return configured is False
     return str(configured or "").strip().lower() in {"off", "false", "no", "0"}
-
-
 # ─────────────────────────────────────────────────────────────────────────
 # Terminal capability detection
 # ─────────────────────────────────────────────────────────────────────────
