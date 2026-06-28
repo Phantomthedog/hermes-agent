@@ -152,7 +152,14 @@ const TranscriptPane = memo(function TranscriptPane({
                 <Box flexDirection="column" paddingTop={1}>
                   <Banner maxWidth={Math.max(1, composer.cols - 2)} t={ui.theme} />
 
-                  {row.msg.info && <SessionPanel info={row.msg.info} maxWidth={Math.max(1, composer.cols - 2)} sid={ui.sid} t={ui.theme} />}
+                  {row.msg.info && (
+                    <SessionPanel
+                      info={row.msg.info}
+                      maxWidth={Math.max(1, composer.cols - 2)}
+                      sid={ui.sid}
+                      t={ui.theme}
+                    />
+                  )}
                 </Box>
               ) : row.msg.kind === 'panel' && row.msg.panelData ? (
                 <Panel sections={row.msg.panelData.sections} t={ui.theme} title={row.msg.panelData.title} />
@@ -164,11 +171,11 @@ const TranscriptPane = memo(function TranscriptPane({
                   detailsModeCommandOverride={ui.detailsModeCommandOverride}
                   msg={row.msg}
                   onLcmExpand={onLcmExpand}
-                  prev={prevRenderedMsg(
-                    i => transcript.virtualRows[i]?.msg,
-                    row.index,
-                    { commandOverride: ui.detailsModeCommandOverride, detailsMode: ui.detailsMode, sections: ui.sections }
-                  )}
+                  prev={prevRenderedMsg(i => transcript.virtualRows[i]?.msg, row.index, {
+                    commandOverride: ui.detailsModeCommandOverride,
+                    detailsMode: ui.detailsMode,
+                    sections: ui.sections
+                  })}
                   sections={ui.sections}
                   t={ui.theme}
                 />
@@ -214,7 +221,15 @@ const ComposerPane = memo(function ComposerPane({
   const ui = useStore($uiState)
   const isBlocked = useStore($isBlocked)
   const sh = (composer.inputBuf[0] ?? composer.input).startsWith('!')
-  const promptText = composerPromptText(ui.theme.brand.prompt, ui.info?.profile_name, sh, TERMUX_TUI_MODE, composer.cols)
+
+  const promptText = composerPromptText(
+    ui.theme.brand.prompt,
+    ui.info?.profile_name,
+    sh,
+    TERMUX_TUI_MODE,
+    composer.cols
+  )
+
   const promptWidth = composerPromptWidth(promptText)
   const promptBlank = ' '.repeat(promptWidth)
   const inputColumns = stableComposerColumns(composer.cols, promptWidth, TERMUX_TUI_MODE)
@@ -412,7 +427,6 @@ const StatusRulePane = memo(function StatusRulePane({
         notice={ui.notice}
         onSessionCountClick={() => patchOverlayState({ sessions: true })}
         sessionStartedAt={status.sessionStartedAt}
-        showCost={ui.showCost}
         status={ui.status}
         statusColor={status.statusColor}
         t={ui.theme}
