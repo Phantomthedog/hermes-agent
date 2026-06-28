@@ -5875,7 +5875,7 @@ def test_prompt_submit_auto_titles_session_on_complete(monkeypatch):
     monkeypatch.setattr(server, "render_message", lambda raw, cols: None)
     monkeypatch.setattr(server, "_get_db", lambda: None)
 
-    with patch("agent.title_generator.auto_title_session") as mock_title:
+    with patch("agent.title_generator.maybe_auto_title") as mock_title:
         server.handle_request(
             {
                 "id": "1",
@@ -5888,6 +5888,10 @@ def test_prompt_submit_auto_titles_session_on_complete(monkeypatch):
             "session-key",  # session_id
             "Tell me about Rome",  # user_message
             "Rome was founded in 753 BC.",  # assistant_response
+            [
+                {"role": "user", "content": "Tell me about Rome"},
+                {"role": "assistant", "content": "Rome was founded in 753 BC."},
+            ],
             title_callback=ANY,
         )
 

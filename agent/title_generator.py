@@ -6,6 +6,7 @@ thinking and return empty content with finish_reason="length".
 """
 
 import logging
+import threading
 from typing import Callable, Optional
 
 from agent.auxiliary_client import call_llm
@@ -274,3 +275,40 @@ def auto_title_session(
                 logger.debug("Auto-title callback failed", exc_info=True)
     except Exception as e:
         logger.debug("Failed to set auto-generated title: %s", e)
+
+
+def maybe_auto_title(
+    session_db,
+    session_id: str,
+    user_message: str,
+    assistant_response: str,
+    conversation_history: list,
+    failure_callback: Optional[FailureCallback] = None,
+    main_runtime: dict = None,
+    title_callback: Optional[TitleCallback] = None,
+) -> None:
+    """Fire-and-forget title generation after the first exchange.
+
+    Only generates a title when:
+    - This appears to be the first user→assistant exchange
+    - No title is already set
+    """
+    if not session_db or not session_id or not user_message or not assistant_response:
+        return
+
+    user_msg_count = sum(1 for m in (conversation_history or []) if m.get("role") == "user")
+    if user_msg_count > 2:
+        return
+
+    thread = threading.Thread(
+        target=auto_title_session,
+        args=(session_db, session_id, user_message, assistant_response),
+        kwargs={
+            "failure_callback": failure_callback,
+            "main_runtime": main_runtime,
+            "title_callback": title_callback,
+        },
+        daemon=True,
+        name="auto-title",
+    )
+    thread.start()
