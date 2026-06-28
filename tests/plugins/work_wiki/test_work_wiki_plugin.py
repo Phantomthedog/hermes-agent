@@ -617,6 +617,132 @@ def test_work_wiki_promotes_high_confidence_knowledge_when_enabled(monkeypatch, 
         conn.close()
 
 
+def test_work_wiki_does_not_promote_summary_or_task_chatter(monkeypatch, tmp_path):
+    plugins_mod, wiki, db = _load_with_temp_paths(monkeypatch, tmp_path, promote=True)
+    plugins_mod.invoke_hook(
+        "pre_llm_call",
+        session_id="s6-noise",
+        turn_id="t1",
+        user_message="Implement Mission Memory promotion filtering for transcript cleanup.",
+        conversation_history=[],
+        is_first_turn=True,
+        model="test-model",
+        platform="cli",
+    )
+    plugins_mod.invoke_hook(
+        "post_llm_call",
+        session_id="s6-noise",
+        turn_id="t1",
+        assistant_response=(
+            "Done. I updated the combined Markdown with your requested focus: "
+            "video/content structure, inferred questions, what each answer is expressing, "
+            "future video directions, and a reusable interview question list.\n\n"
+            "Verification:\n"
+            "- Markdown was updated.\n"
+        ),
+        conversation_history=[],
+        model="test-model",
+        platform="cli",
+    )
+
+    assert not (wiki / "concepts" / "hermes-mission-memory.md").exists()
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM work_items WHERE work_kind='mission'").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM events WHERE event_type='knowledge_promoted'").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_work_wiki_promotes_explicit_mission_memory_decisions(monkeypatch, tmp_path):
+    plugins_mod, wiki, db = _load_with_temp_paths(monkeypatch, tmp_path, promote=True)
+    plugins_mod.invoke_hook(
+        "pre_llm_call",
+        session_id="s6-decision",
+        turn_id="t1",
+        user_message="Fix the Mission Memory renderer workflow.",
+        conversation_history=[],
+        is_first_turn=True,
+        model="test-model",
+        platform="cli",
+    )
+    plugins_mod.invoke_hook(
+        "post_llm_call",
+        session_id="s6-decision",
+        turn_id="t1",
+        assistant_response=(
+            "Implemented the renderer workflow fix.\n\n"
+            "Decisions:\n"
+            "- Mission Memory renderer requires literal replacement handling because generated wiki blocks can contain Windows paths.\n\n"
+            "Verification:\n"
+            "- Work Wiki tests passed.\n"
+        ),
+        conversation_history=[],
+        model="test-model",
+        platform="cli",
+    )
+
+    promoted = wiki / "concepts" / "hermes-mission-memory.md"
+    assert promoted.exists()
+    text = promoted.read_text(encoding="utf-8")
+    assert "Mission Memory renderer requires literal replacement handling" in text
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM events WHERE event_type='knowledge_promoted'").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_wiki_reconcile_work_id_covers_uncovered_events(monkeypatch, tmp_path):
+    plugins_mod, _wiki, db = _load_with_temp_paths(monkeypatch, tmp_path)
+    plugins_mod.invoke_hook(
+        "pre_llm_call",
+        session_id="s6-reconcile",
+        turn_id="t1",
+        user_message="Implement Work Wiki reconcile coverage.",
+        conversation_history=[],
+        is_first_turn=True,
+        model="test-model",
+        platform="cli",
+    )
+
+    conn = sqlite3.connect(db)
+    try:
+        work_id = conn.execute("SELECT work_id FROM work_items WHERE work_kind='mission'").fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO events(
+                event_id, work_id, session_id, branch_id, turn_id, event_type, source,
+                tool_name, summary, payload, observed_at, sequence
+            ) VALUES ('evt_uncovered', ?, 's6-reconcile', '', 't1', 'command_succeeded',
+                      'test', '', 'Uncovered event for reconciliation.', '{}',
+                      '2026-06-26T00:00:00Z', 99)
+            """,
+            (work_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    handler = plugins_mod.get_plugin_manager()._plugin_commands["wiki"]["handler"]
+    result = handler(f"reconcile {work_id}")
+
+    assert "Reconciled 1 uncovered event" in result
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute(
+            "SELECT checkpoint_id FROM events WHERE event_id='evt_uncovered'"
+        ).fetchone()[0].startswith("chk_")
+        row = conn.execute(
+            "SELECT checkpoint_kind, summary FROM checkpoints WHERE work_id=? ORDER BY created_at DESC LIMIT 1",
+            (work_id,),
+        ).fetchone()
+        assert row[0] == "reconciliation"
+        assert "Reconciled 1 previously uncovered event" in row[1]
+    finally:
+        conn.close()
+
+
 def test_wiki_close_refuses_running_delegate(monkeypatch, tmp_path):
     plugins_mod, _wiki, db = _load_with_temp_paths(monkeypatch, tmp_path)
     plugins_mod.invoke_hook(

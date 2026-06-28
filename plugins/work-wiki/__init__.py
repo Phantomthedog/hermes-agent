@@ -987,7 +987,7 @@ def _metadata_from_response(mission: WorkItem, response: str) -> dict[str, Any]:
     if paths:
         updates["artifacts"] = list(dict.fromkeys(list(meta.get("artifacts", [])) + paths))[:50]
         updates["changed_files"] = list(dict.fromkeys(list(meta.get("changed_files", [])) + paths))[:50]
-    decisions = _extract_section_items(response, ("decision", "decided"))
+    decisions = _extract_section_items(response, ("decision", "decisions", "decided"))
     if decisions:
         updates["decisions"] = list(dict.fromkeys(list(meta.get("decisions", [])) + decisions))[:30]
     findings = _extract_section_items(response, ("finding", "findings", "learned", "root cause"))

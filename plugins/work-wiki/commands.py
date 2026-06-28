@@ -28,7 +28,7 @@ HELP = """Work Wiki commands:
   /wiki conflicts
   /wiki curate [--apply] [--limit N] [--since-days N] [--work-id ID] [--provider P] [--model M]
   /wiki review
-  /wiki reconcile
+  /wiki reconcile [work-id]
   /wiki repair
   /wiki on|off
 """
@@ -87,7 +87,7 @@ class CommandHandler:
         if cmd in {"conflicts", "review"}:
             return self.review()
         if cmd == "reconcile":
-            return self.reconcile()
+            return self.reconcile(rest)
         if cmd == "repair":
             return self.repair()
         if cmd == "on":
@@ -466,7 +466,34 @@ class CommandHandler:
             parts.append("Render failures:\n" + "\n".join(f"- {row['render_job_id']}: {row['last_error']}" for row in failures))
         return "\n\n".join(parts) if parts else "No review items."
 
-    def reconcile(self) -> str:
+    def reconcile(self, args: list[str] | None = None) -> str:
+        work_id = args[0] if args else ""
+        if work_id:
+            work = self.store.get_work(work_id)
+            if not work:
+                return f"Unknown work id: {work_id}"
+            uncovered = self.store.uncovered_events(work.work_id, limit=1000)
+            if uncovered:
+                event_ids = [row["event_id"] for row in uncovered]
+                self.store.create_checkpoint(
+                    work_id=work.work_id,
+                    session_id=_session_id(),
+                    checkpoint_kind="reconciliation",
+                    summary=f"Reconciled {len(event_ids)} previously uncovered event(s).",
+                    status_after=work.status,
+                    metadata={"reconciled_event_count": len(event_ids), "verification_state": "reconciled"},
+                    event_ids=event_ids,
+                    semantic=True,
+                    needs_review=work.status == "needs_review",
+                    confidence=0.6,
+                )
+            else:
+                self.store.enqueue_render("mission", work_id=work.work_id)
+                self.store.enqueue_render("dashboards")
+            self.renderer.process_pending(limit=1000)
+            if not uncovered:
+                return f"No uncovered events for {work.title}; rendered current Markdown."
+            return f"Reconciled {len(uncovered)} uncovered event(s) for {work.title}."
         self.store.enqueue_render("dashboards")
         for mission in self.store.recent_missions(limit=1000):
             self.store.enqueue_render("mission", work_id=mission.work_id)

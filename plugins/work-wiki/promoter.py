@@ -9,6 +9,70 @@ from typing import Any
 from .config import WorkWikiConfig
 from .store import WorkItem, WorkWikiStore, slugify, stable_hash, utc_now
 
+FIELD_WEIGHTS = {
+    "decisions": 3,
+    "findings": 2,
+    "evidence": 1,
+}
+
+DURABLE_TERMS = (
+    "architecture",
+    "configuration",
+    "decision",
+    "durable",
+    "evidence",
+    "hook",
+    "ledger",
+    "lineage",
+    "mission control",
+    "plugin",
+    "recovery",
+    "renderer",
+    "requires",
+    "root cause",
+    "sqlite",
+    "workflow",
+)
+
+NOISE_PREFIXES = (
+    "done.",
+    "finished",
+    "i created",
+    "i edited",
+    "i removed",
+    "i updated",
+    "no.",
+    "pass ",
+    "revised.",
+    "updated the markdown",
+    "yes.",
+)
+
+NOISE_TERMS = (
+    "question",
+    "transcript",
+    "video",
+    "pdf",
+    "docx",
+    "mp4",
+    "folder slug",
+)
+
+REQUIRED_CONTEXT_TERMS = (
+    "codex",
+    "hermes",
+    "mission",
+    "work wiki",
+    "wiki",
+    "sqlite",
+    "ledger",
+    "renderer",
+    "plugin",
+    "hook",
+    "delegate",
+    "subagent",
+)
+
 
 def _atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -23,6 +87,11 @@ def _atomic_write(path: Path, content: str) -> None:
                 os.unlink(tmp)
         except OSError:
             pass
+
+
+def _needs_review(item: str) -> bool:
+    lowered = item.lower()
+    return any(term in lowered for term in ("maybe", "unclear", "not sure", "possibly"))
 
 
 class KnowledgePromoter:
@@ -97,29 +166,42 @@ class KnowledgePromoter:
         return [target_rel]
 
     def _candidate_items(self, updates: dict[str, Any], summary: str) -> list[str]:
-        values: list[str] = []
-        for key in ("findings", "decisions", "evidence"):
+        weighted: list[tuple[int, str]] = []
+        for key in ("decisions", "findings", "evidence"):
             raw = updates.get(key)
             if isinstance(raw, str):
-                values.append(raw)
+                weighted.append((FIELD_WEIGHTS[key], raw))
             elif isinstance(raw, list):
-                values.extend(str(item) for item in raw)
-        if summary:
-            values.append(summary)
+                weighted.extend((FIELD_WEIGHTS[key], str(item)) for item in raw)
 
         candidates = []
-        durable_terms = ("root cause", "pattern", "decision", "requires", "because", "architecture", "lineage", "delegate", "sqlite", "markdown", "renderer")
-        for value in values:
+        for weight, value in weighted:
             item = " ".join(str(value).strip().split())
-            lowered = item.lower()
-            if len(item) < 24 or len(item) > 260:
+            if not self._is_durable_item(item, weight):
                 continue
-            if not any(term in lowered for term in durable_terms):
-                continue
-            if any(term in lowered for term in ("maybe", "unclear", "not sure", "possibly")):
+            if _needs_review(item):
                 item = f"Review required: {item}"
             candidates.append(item)
         return list(dict.fromkeys(candidates))[:8]
+
+    def _is_durable_item(self, item: str, weight: int) -> bool:
+        lowered = item.lower()
+        if len(item) < 32 or len(item) > 260:
+            return False
+        if lowered.startswith(NOISE_PREFIXES):
+            return False
+        context_hits = sum(1 for term in REQUIRED_CONTEXT_TERMS if term in lowered)
+        if any(term in lowered for term in NOISE_TERMS) and context_hits == 0:
+            return False
+        durable_hits = sum(1 for term in DURABLE_TERMS if term in lowered)
+        if durable_hits == 0:
+            return False
+        # Evidence is often verification chatter. Only promote it when it carries
+        # multiple durable signals and a Mission Memory context. Findings and
+        # decisions can also pass when they carry multiple durable signals.
+        if weight < 2:
+            return context_hits > 0 and durable_hits >= 2
+        return context_hits > 0 or durable_hits >= 2
 
     def _evidence_for(self, item: str, updates: dict[str, Any], summary: str) -> str:
         evidence_values: list[str] = []
