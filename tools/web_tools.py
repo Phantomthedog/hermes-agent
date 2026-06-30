@@ -589,6 +589,7 @@ async def web_extract_tool(
     urls: List[str],
     format: str = None,
     char_limit: Optional[int] = None,
+    use_llm_processing: Optional[bool] = None,
 ) -> str:
     """
     Extract content from specific web pages using available extraction API backend.
@@ -606,6 +607,8 @@ async def web_extract_tool(
         format (str): Desired output format ("markdown" or "html", optional)
         char_limit (Optional[int]): Per-page char budget sent to the model
             (default: web.extract_char_limit or 15000). Larger pages truncate.
+        use_llm_processing (Optional[bool]): Deprecated compatibility argument;
+            ignored because extraction no longer performs LLM summarization.
 
     Security: URLs are checked for embedded secrets before fetching.
 
