@@ -823,6 +823,9 @@ def init_agent(
             if base_url_host_matches(effective_base, "openrouter.ai"):
                 from agent.auxiliary_client import build_or_headers
                 client_kwargs["default_headers"] = build_or_headers()
+            elif base_url_host_matches(effective_base, "allrouter.xyz"):
+                from agent.auxiliary_client import build_allrouter_headers
+                client_kwargs["default_headers"] = build_allrouter_headers()
             elif base_url_host_matches(effective_base, "integrate.api.nvidia.com"):
                 from agent.auxiliary_client import build_nvidia_nim_headers
                 client_kwargs["default_headers"] = build_nvidia_nim_headers(effective_base)

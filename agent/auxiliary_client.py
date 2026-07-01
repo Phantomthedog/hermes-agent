@@ -498,6 +498,15 @@ _NVIDIA_NIM_CLOUD_HEADERS = {
 }
 
 
+def build_allrouter_headers() -> dict:
+    """Return headers accepted by AllRouter's Cloudflare front door.
+
+    AllRouter rejects Python/OpenAI-SDK default User-Agent traffic with
+    Cloudflare 1010, while curl/Codex-style agents are allowed through.
+    """
+    return {"User-Agent": "codex_cli_rs/0.0.0 (Hermes Agent)"}
+
+
 def build_nvidia_nim_headers(base_url: str | None) -> dict:
     """Return NVIDIA NIM cloud attribution headers for build.nvidia.com traffic."""
     if base_url_host_matches(str(base_url or ""), "integrate.api.nvidia.com"):
@@ -2067,7 +2076,8 @@ def _try_custom_endpoint() -> Tuple[Optional[Any], Optional[str]]:
     # headers (User-Agent: OpenAI/Python ..., X-Stainless-*) on this custom
     # endpoint's auxiliary calls too — matching the main agent client so the
     # whole session reaches a gateway/WAF that rejects the SDK fingerprint. (#40033)
-    _custom_headers = _apply_user_default_headers(None)
+    _custom_headers = build_allrouter_headers() if base_url_host_matches(_clean_base, "allrouter.xyz") else None
+    _custom_headers = _apply_user_default_headers(_custom_headers)
     if _custom_headers:
         _extra["default_headers"] = _custom_headers
     if custom_mode == "codex_responses":
@@ -3793,6 +3803,8 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
     sync_base_url = str(sync_client.base_url)
     if base_url_host_matches(sync_base_url, "openrouter.ai"):
         async_kwargs["default_headers"] = build_or_headers()
+    elif base_url_host_matches(sync_base_url, "allrouter.xyz"):
+        async_kwargs["default_headers"] = build_allrouter_headers()
     elif base_url_host_matches(sync_base_url, "api.githubcopilot.com"):
         from hermes_cli.copilot_auth import copilot_request_headers
 
@@ -4095,6 +4107,8 @@ def resolve_provider_client(
                 extra["default_query"] = _dq
             if base_url_host_matches(custom_base, "api.kimi.com"):
                 extra["default_headers"] = {"User-Agent": "claude-code/0.1.0"}
+            elif base_url_host_matches(custom_base, "allrouter.xyz"):
+                extra["default_headers"] = build_allrouter_headers()
             elif base_url_host_matches(custom_base, "api.githubcopilot.com"):
                 from hermes_cli.copilot_auth import copilot_request_headers
                 extra["default_headers"] = copilot_request_headers(
@@ -4348,6 +4362,8 @@ def resolve_provider_client(
         headers = {}
         if base_url_host_matches(base_url, "api.kimi.com"):
             headers["User-Agent"] = "claude-code/0.1.0"
+        elif base_url_host_matches(base_url, "allrouter.xyz"):
+            headers.update(build_allrouter_headers())
         elif base_url_host_matches(base_url, "api.githubcopilot.com"):
             from hermes_cli.copilot_auth import copilot_request_headers
 

@@ -4090,6 +4090,9 @@ class AIAgent:
 
         if base_url_host_matches(base_url, "openrouter.ai"):
             self._client_kwargs["default_headers"] = build_or_headers()
+        elif base_url_host_matches(base_url, "allrouter.xyz"):
+            from agent.auxiliary_client import build_allrouter_headers
+            self._client_kwargs["default_headers"] = build_allrouter_headers()
         elif base_url_host_matches(base_url, "integrate.api.nvidia.com"):
             self._client_kwargs["default_headers"] = build_nvidia_nim_headers(base_url)
         elif base_url_host_matches(base_url, "api.routermint.com"):

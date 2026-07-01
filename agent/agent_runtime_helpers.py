@@ -1676,6 +1676,9 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
             _sm_timeout = get_provider_request_timeout(agent.provider, agent.model)
             if _sm_timeout is not None:
                 agent._client_kwargs["timeout"] = _sm_timeout
+            _apply_headers = getattr(type(agent), "_apply_client_headers_for_base_url", None)
+            if callable(_apply_headers):
+                _apply_headers(agent, effective_base)
             agent.client = agent._create_openai_client(
                 dict(agent._client_kwargs),
                 reason="switch_model",

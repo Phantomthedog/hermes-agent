@@ -43,6 +43,54 @@ def test_routermint_base_url_applies_user_agent_header(mock_openai):
 
 
 @patch("run_agent.OpenAI")
+def test_allrouter_base_url_applies_codex_like_user_agent(mock_openai):
+    mock_openai.return_value = MagicMock()
+    agent = AIAgent(
+        api_key="test-key",
+        base_url="https://www.allrouter.xyz/v1",
+        model="gpt-5.5",
+        provider="allrouter",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+    )
+
+    agent._apply_client_headers_for_base_url("https://www.allrouter.xyz/v1")
+
+    headers = agent._client_kwargs["default_headers"]
+    assert headers["User-Agent"] == "codex_cli_rs/0.0.0 (Hermes Agent)"
+
+
+@patch("run_agent.OpenAI")
+def test_switch_model_to_allrouter_keeps_codex_like_user_agent(mock_openai):
+    mock_openai.return_value = MagicMock()
+    agent = AIAgent(
+        api_key="old-key",
+        base_url="https://api.example.com/v1",
+        model="old-model",
+        provider="custom",
+        quiet_mode=True,
+        skip_context_files=True,
+        skip_memory=True,
+    )
+
+    with patch("agent.credential_pool.load_pool", return_value=None):
+        agent.switch_model(
+            "gpt-5.5",
+            "allrouter",
+            api_key="new-key",
+            base_url="https://www.allrouter.xyz/v1",
+            api_mode="codex_responses",
+        )
+
+    headers = agent._client_kwargs["default_headers"]
+    assert headers["User-Agent"] == "codex_cli_rs/0.0.0 (Hermes Agent)"
+    assert mock_openai.call_args.kwargs["default_headers"]["User-Agent"] == (
+        "codex_cli_rs/0.0.0 (Hermes Agent)"
+    )
+
+
+@patch("run_agent.OpenAI")
 def test_nvidia_cloud_base_url_applies_billing_origin_header(mock_openai):
     mock_openai.return_value = MagicMock()
     agent = AIAgent(
