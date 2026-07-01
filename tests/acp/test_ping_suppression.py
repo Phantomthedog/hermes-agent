@@ -18,7 +18,7 @@ import pytest
 
 from acp.exceptions import RequestError
 
-from acp_adapter.entry import _BenignProbeMethodFilter
+from acp_adapter.entry import _BenignAiohttpTeardownFilter, _BenignProbeMethodFilter
 
 
 # -- Unit tests on the filter itself ----------------------------------------
@@ -84,6 +84,58 @@ def test_filter_allows_request_error_with_different_code() -> None:
 def test_filter_allows_log_without_exc_info() -> None:
     f = _BenignProbeMethodFilter()
     record = _make_record("Background task failed", None)
+    assert f.filter(record) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Unclosed client session\nclient_session: <aiohttp.client.ClientSession object at 0x1>",
+        (
+            "Unclosed connector\nconnections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x1>, 1.0)])']\n"
+            "connector: <aiohttp.connector.TCPConnector object at 0x2>"
+        ),
+    ],
+)
+def test_aiohttp_teardown_filter_suppresses_cleanup_noise(message: str) -> None:
+    f = _BenignAiohttpTeardownFilter()
+    record = logging.LogRecord(
+        name="asyncio",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=0,
+        msg=message,
+        args=(),
+        exc_info=None,
+    )
+    assert f.filter(record) is False
+
+
+def test_aiohttp_teardown_filter_allows_other_asyncio_errors() -> None:
+    f = _BenignAiohttpTeardownFilter()
+    record = logging.LogRecord(
+        name="asyncio",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=0,
+        msg="Task exception was never retrieved",
+        args=(),
+        exc_info=None,
+    )
+    assert f.filter(record) is True
+
+
+def test_aiohttp_teardown_filter_allows_non_asyncio_loggers() -> None:
+    f = _BenignAiohttpTeardownFilter()
+    record = logging.LogRecord(
+        name="gateway.platforms.whatsapp",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=0,
+        msg="Unclosed client session",
+        args=(),
+        exc_info=None,
+    )
     assert f.filter(record) is True
 
 

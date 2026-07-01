@@ -77,6 +77,28 @@ class _BenignProbeMethodFilter(logging.Filter):
         return method not in _BENIGN_PROBE_METHODS
 
 
+class _BenignAiohttpTeardownFilter(logging.Filter):
+    """Suppress aiohttp teardown warnings that ACP clients treat as turn errors.
+
+    The Happier ACP bridge forwards child stderr as session messages. aiohttp's
+    ``ClientSession.__del__`` logs unclosed-session warnings through the
+    ``asyncio`` logger during best-effort GC cleanup; those warnings are noisy,
+    but they do not mean the Hermes turn failed. Letting them reach stderr after
+    a successful answer makes Happier mark the turn aborted.
+    """
+
+    _BENIGN_PREFIXES = (
+        "Unclosed client session",
+        "Unclosed connector",
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "asyncio" or record.levelno < logging.ERROR:
+            return True
+        message = record.getMessage()
+        return not any(message.startswith(prefix) for prefix in self._BENIGN_PREFIXES)
+
+
 def _setup_logging() -> None:
     """Route all logging to stderr so stdout stays clean for ACP stdio."""
     handler = logging.StreamHandler(sys.stderr)
@@ -87,6 +109,7 @@ def _setup_logging() -> None:
         )
     )
     handler.addFilter(_BenignProbeMethodFilter())
+    handler.addFilter(_BenignAiohttpTeardownFilter())
     root = logging.getLogger()
     root.handlers.clear()
     root.addHandler(handler)

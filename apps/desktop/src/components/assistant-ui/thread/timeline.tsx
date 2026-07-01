@@ -24,6 +24,16 @@ const ROW_CLASS =
 const POPOVER_SHELL =
   'absolute right-full top-1/2 z-50 max-h-[min(22rem,calc(100vh-8rem))] w-80 max-w-[min(20rem,calc(100vw-2rem))] -translate-y-1/2 overflow-x-hidden overflow-y-auto overscroll-contain rounded-lg border p-1 text-popover-foreground transition-[opacity,transform] duration-100 ease-out group-hover/timeline:transition-none'
 
+function escapeSelectorValue(value: string): string {
+  const css = globalThis.CSS as { escape?: (value: string) => string } | undefined
+
+  if (typeof css?.escape === 'function') {
+    return css.escape(value)
+  }
+
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
 function userPromptText(content: unknown): string {
   if (typeof content === 'string') {
     return content
@@ -103,7 +113,7 @@ function jumpScroll(viewport: HTMLElement, top: number, duration = 170): void {
 
 function scrollToPrompt(id: string) {
   const viewport = document.querySelector<HTMLElement>(VIEWPORT)
-  const node = viewport?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`)
+  const node = viewport?.querySelector<HTMLElement>(`[data-message-id="${escapeSelectorValue(id)}"]`)
 
   if (!viewport || !node) {
     return
@@ -190,7 +200,7 @@ export const ThreadTimeline: FC = () => {
       const top = viewport.getBoundingClientRect().top
 
       const offsets = entries.map(entry => {
-        const node = viewport.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(entry.id)}"]`)
+        const node = viewport.querySelector<HTMLElement>(`[data-message-id="${escapeSelectorValue(entry.id)}"]`)
 
         return node ? node.getBoundingClientRect().top - top : null
       })
