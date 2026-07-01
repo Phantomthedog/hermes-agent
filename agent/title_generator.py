@@ -90,7 +90,7 @@ def _build_kwargs(
 def generate_title(
     user_message: str,
     assistant_response: str,
-    timeout: float = 30.0,
+    timeout: Optional[float] = None,
     failure_callback: Optional[FailureCallback] = None,
     main_runtime: dict = None,
 ) -> Optional[str]:
@@ -216,6 +216,13 @@ def _extract_title(response) -> tuple[Optional[str], Optional[str]]:
     choice = response.choices[0]
     finish = getattr(choice, "finish_reason", None)
     raw = (choice.message.content or "").strip()
+    if not raw:
+        return None, finish
+    # Strip thinking/reasoning blocks that think-enabled models
+    # (MiniMax M2.7, DeepSeek, etc.) may emit before a title.
+    from agent.agent_runtime_helpers import strip_think_blocks
+
+    raw = strip_think_blocks(None, raw).strip()
     if not raw:
         return None, finish
     # Clean up: remove quotes, trailing punctuation, prefixes like "Title: "

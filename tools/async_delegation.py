@@ -50,6 +50,8 @@ except ImportError:  # pragma: no cover - older Python private API
     _threads_queues = None  # type: ignore[assignment]
 from typing import Any, Callable, Dict, List, Optional
 
+from tools.thread_context import propagate_context_to_thread
+
 logger = logging.getLogger(__name__)
 
 
@@ -267,7 +269,9 @@ def dispatch_async_delegation(
             _finalize(delegation_id, result, status)
 
     try:
-        executor.submit(_worker)
+        # Propagate the dispatching profile so the detached child resolves
+        # get_hermes_home() under the right profile.
+        executor.submit(propagate_context_to_thread(_worker))
     except Exception as exc:  # pragma: no cover — pool submit failure is rare
         with _records_lock:
             _records.pop(delegation_id, None)
@@ -452,7 +456,8 @@ def dispatch_async_delegation_batch(
             _finalize_batch(delegation_id, combined, status)
 
     try:
-        executor.submit(_worker)
+        # Propagate the dispatching profile to the detached batch children.
+        executor.submit(propagate_context_to_thread(_worker))
     except Exception as exc:  # pragma: no cover
         with _records_lock:
             _records.pop(delegation_id, None)

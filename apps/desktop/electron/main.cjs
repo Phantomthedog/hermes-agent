@@ -5126,13 +5126,24 @@ function resetBootProgressForReconnect() {
   )
 }
 
+function stopBackendChild(child) {
+  if (!child || child.killed) return
+  try {
+    if (IS_WINDOWS && Number.isInteger(child.pid)) {
+      forceKillProcessTree(child.pid)
+    } else {
+      child.kill('SIGTERM')
+    }
+  } catch {
+    // Already gone.
+  }
+}
+
 function resetHermesConnection() {
   connectionPromise = null
   backendStartFailure = null
 
-  if (hermesProcess && !hermesProcess.killed) {
-    hermesProcess.kill('SIGTERM')
-  }
+  stopBackendChild(hermesProcess)
 
   hermesProcess = null
   resetBootProgressForReconnect()
@@ -5380,13 +5391,7 @@ function stopPoolBackend(profile) {
   const entry = backendPool.get(profile)
   if (!entry) return
   backendPool.delete(profile)
-  if (entry.process && !entry.process.killed) {
-    try {
-      entry.process.kill('SIGTERM')
-    } catch {
-      // Already gone.
-    }
-  }
+  stopBackendChild(entry.process)
 }
 
 async function teardownPoolBackendAndWait(profile) {
@@ -5394,13 +5399,7 @@ async function teardownPoolBackendAndWait(profile) {
   if (!entry) return
   backendPool.delete(profile)
 
-  if (entry.process && !entry.process.killed) {
-    try {
-      entry.process.kill('SIGTERM')
-    } catch {
-      // Already gone.
-    }
-  }
+  stopBackendChild(entry.process)
 
   await waitForBackendExit(entry.process)
 }
@@ -7659,9 +7658,7 @@ app.on('before-quit', () => {
     disposeTerminalSession(id)
   }
 
-  if (hermesProcess && !hermesProcess.killed) {
-    hermesProcess.kill('SIGTERM')
-  }
+  stopBackendChild(hermesProcess)
   stopAllPoolBackends()
 })
 
